@@ -32,38 +32,32 @@ impl App {
     }
 
     pub fn draw(&mut self, frame: &mut Frame) {
-        let vertical = Layout::vertical([
-            Constraint::Length(1),
-            Constraint::Length(3),
-            Constraint::Min(1),
-        ]);
-        let [help_area, input_area, messages_area] = vertical.areas(frame.area());
+        let vertical = Layout::vertical([Constraint::Length(3), Constraint::Min(1)]);
+        let [input_area, messages_area] = vertical.areas(frame.area());
 
         let (msg, style) = match self.mode {
             Mode::Normal => (
                 vec![
-                    "Press ".into(),
+                    " Press ".into(),
                     "q".bold(),
                     " to exit, ".into(),
                     "i".bold(),
-                    " to start editing.".bold(),
+                    " to start editing. ".bold(),
                 ],
                 Style::default().add_modifier(Modifier::SLOW_BLINK),
             ),
             Mode::Insert => (
                 vec![
-                    "Press ".into(),
+                    " Press ".into(),
                     "Esc".bold(),
                     " to stop editing, ".into(),
                     "Enter".bold(),
-                    " to record the message".into(),
+                    " to record the message. ".into(),
                 ],
                 Style::default(),
             ),
         };
-        let text = Text::from(Line::from(msg)).patch_style(style);
-        let help_message = Paragraph::new(text);
-        frame.render_widget(help_message, help_area);
+        let text = Line::from(msg).patch_style(style);
 
         self.inp.draw(frame, input_area);
 
@@ -76,7 +70,11 @@ impl App {
                 ListItem::new(content)
             })
             .collect();
-        let messages = List::new(messages).block(Block::bordered().title("Messages"));
+        let messages = List::new(messages).block(
+            Block::bordered()
+                .title("Messages")
+                .title_bottom(text.centered()),
+        );
         frame.render_widget(messages, messages_area);
     }
 
