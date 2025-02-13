@@ -1,12 +1,14 @@
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
-    widgets::{Block, List, ListItem, Paragraph, Wrap},
+    widgets::{Block, List, ListItem, Paragraph},
 };
 
+use unicode_width::UnicodeWidthChar;
+
 pub struct App {
-    character_index: usize,
-    input: String,
+    input_position: usize,
+    input: Vec<char>,
     messages: Vec<String>,
     mode: Mode,
     title: String,
@@ -23,24 +25,13 @@ const TITLE: &str = " TODO List ";
 impl App {
     pub fn new() -> Self {
         Self {
-            character_index: 0,
-            input: String::new(),
+            input_position: 0,
+            input: Vec::new(),
             messages: Vec::new(),
             mode: Mode::Normal,
             title: TITLE.to_string(),
         }
     }
-
-    // pub fn draw(&self, frame: &mut Frame) {
-    //     let area = frame.area();
-    //     let block = Block::bordered().title(Line::from(self.title.as_ref()).centered());
-    //     frame.render_widget(&block, area);
-    //     let inner = block.inner(area);
-    //     let messages = self.messages.clone();
-    //     let body = messages.join("\n");
-    //     let para = Paragraph::new(Line::from(body)).wrap(Wrap { trim: true });
-    //     frame.render_widget(&para, inner);
-    // }
 
     pub fn draw(&mut self, frame: &mut Frame) {
         let vertical = Layout::vertical([
@@ -76,28 +67,21 @@ impl App {
         let help_message = Paragraph::new(text);
         frame.render_widget(help_message, help_area);
 
-        let input = Paragraph::new(self.input.as_str())
+        let cursor_position: u16 = self.input[..self.input_position]
+            .iter()
+            .map(|c| c.width().unwrap_or(1) as u16)
+            .sum();
+
+        let x = input_area.x + cursor_position + 1;
+        let y = input_area.y + 1;
+        frame.set_cursor_position(Position::new(x, y));
+        let input = Paragraph::new(self.input.iter().collect::<String>())
             .style(match self.mode {
                 Mode::Normal => Style::default(),
                 Mode::Insert => Style::default().fg(Color::Yellow),
             })
             .block(Block::bordered().title("Input"));
         frame.render_widget(input, input_area);
-        match self.mode {
-            // Hide the cursor. `Frame` does this by default, so we don't need to do anything here
-            Mode::Normal => {}
-
-            // Make the cursor visible and ask ratatui to put it at the specified coordinates after
-            // rendering
-            // #[allow(clippy::cast_possible_truncation)]
-            Mode::Insert => frame.set_cursor_position(Position::new(
-                // Draw the cursor at the current position in the input field.
-                // This position is can be controlled via the left and right arrow key
-                input_area.x + self.character_index as u16 + 1,
-                // Move one line down, from the border to the input line
-                input_area.y + 1,
-            )),
-        }
 
         let messages: Vec<ListItem> = self
             .messages
@@ -131,88 +115,62 @@ impl App {
                 }
                 _ => false,
             },
-            Mode::Insert => match key.code {
-                KeyCode::Enter => self.submit_message(),
-                KeyCode::Char(c) => self.enter_char(c),
-                KeyCode::Backspace => self.delete_char(),
-                KeyCode::Left => self.move_cursor_left(),
-                KeyCode::Right => self.move_cursor_right(),
-                KeyCode::Esc => {
-                    self.mode = Mode::Normal;
-                    self.title = TITLE.to_string();
-                    false
-                }
-                _ => false,
-            },
+            Mode::Insert => {
+                match key.code {
+                    KeyCode::Backspace => self.remove_previous(),
+                    KeyCode::Delete => self.remove_next(),
+                    KeyCode::Enter => self.submit_message(),
+                    KeyCode::Char(c) => self.insert_char(c),
+                    KeyCode::Left => self.cursor_left(),
+                    KeyCode::Right => self.cursor_right(),
+                    KeyCode::Esc => {
+                        self.mode = Mode::Normal;
+                        self.title = TITLE.to_string();
+                    }
+                    _ => (),
+                };
+                false
+            }
         }
     }
 
-    fn move_cursor_left(&mut self) -> bool {
-        let cursor_moved_left = self.character_index.saturating_sub(1);
-        self.character_index = self.clamp_cursor(cursor_moved_left);
-        false
+    fn cursor_left(&mut self) {
+        self.input_position = self.input_position.saturating_sub(1);
     }
 
-    fn move_cursor_right(&mut self) -> bool {
-        let cursor_moved_right = self.character_index.saturating_add(1);
-        self.character_index = self.clamp_cursor(cursor_moved_right);
-        false
-    }
-
-    fn enter_char(&mut self, new_char: char) -> bool {
-        let index = self.byte_index();
-        self.input.insert(index, new_char);
-        self.move_cursor_right();
-        false
-    }
-
-    /// Returns the byte index based on the character position.
-    ///
-    /// Since each character in a string can be contain multiple bytes, it's necessary to calculate
-    /// the byte index based on the index of the character.
-    fn byte_index(&self) -> usize {
-        self.input
-            .char_indices()
-            .map(|(i, _)| i)
-            .nth(self.character_index)
-            .unwrap_or(self.input.len())
-    }
-
-    fn delete_char(&mut self) -> bool {
-        let is_not_cursor_leftmost = self.character_index != 0;
-        if is_not_cursor_leftmost {
-            // Method "remove" is not used on the saved text for deleting the selected char.
-            // Reason: Using remove on String works on bytes instead of the chars.
-            // Using remove would require special care because of char boundaries.
-
-            let current_index = self.character_index;
-            let from_left_to_current_index = current_index - 1;
-
-            // Getting all characters before the selected character.
-            let before_char_to_delete = self.input.chars().take(from_left_to_current_index);
-            // Getting all characters after selected character.
-            let after_char_to_delete = self.input.chars().skip(current_index);
-
-            // Put all characters together except the selected one.
-            // By leaving the selected one out, it is forgotten and therefore deleted.
-            self.input = before_char_to_delete.chain(after_char_to_delete).collect();
-            self.move_cursor_left();
+    fn cursor_right(&mut self) {
+        if self.input_position < self.input.len() {
+            self.input_position += 1;
         }
-        false
     }
 
-    fn clamp_cursor(&self, new_cursor_pos: usize) -> usize {
-        new_cursor_pos.clamp(0, self.input.chars().count())
+    fn insert_char(&mut self, input: char) {
+        self.input.insert(self.input_position, input);
+        self.cursor_right();
+    }
+
+    fn remove_previous(&mut self) {
+        let current = self.input_position;
+        if current > 0 {
+            self.input.remove(current - 1);
+            self.cursor_left();
+        }
+    }
+
+    fn remove_next(&mut self) {
+        let current = self.input_position;
+        if current < self.input.len() {
+            self.input.remove(current);
+        }
     }
 
     fn reset_cursor(&mut self) {
-        self.character_index = 0;
+        self.input_position = 0;
     }
 
-    fn submit_message(&mut self) -> bool {
-        self.messages.push(self.input.clone());
+    fn submit_message(&mut self) {
+        self.messages.push(self.input.clone().into_iter().collect());
         self.input.clear();
         self.reset_cursor();
-        false
     }
 }
