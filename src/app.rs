@@ -4,14 +4,13 @@ use ratatui::{
     widgets::{Block, List, ListItem, Paragraph},
 };
 
-use unicode_width::UnicodeWidthChar;
+use crate::input;
 
 pub struct App {
-    input_position: usize,
-    input: Vec<char>,
     messages: Vec<String>,
     mode: Mode,
     title: String,
+    inp: input::Input,
 }
 
 #[derive(PartialEq)]
@@ -25,11 +24,10 @@ const TITLE: &str = " TODO List ";
 impl App {
     pub fn new() -> Self {
         Self {
-            input_position: 0,
-            input: Vec::new(),
             messages: Vec::new(),
             mode: Mode::Normal,
             title: TITLE.to_string(),
+            inp: input::Input::new(),
         }
     }
 
@@ -67,21 +65,7 @@ impl App {
         let help_message = Paragraph::new(text);
         frame.render_widget(help_message, help_area);
 
-        let cursor_position: u16 = self.input[..self.input_position]
-            .iter()
-            .map(|c| c.width().unwrap_or(1) as u16)
-            .sum();
-
-        let x = input_area.x + cursor_position + 1;
-        let y = input_area.y + 1;
-        frame.set_cursor_position(Position::new(x, y));
-        let input = Paragraph::new(self.input.iter().collect::<String>())
-            .style(match self.mode {
-                Mode::Normal => Style::default(),
-                Mode::Insert => Style::default().fg(Color::Yellow),
-            })
-            .block(Block::bordered().title("Input"));
-        frame.render_widget(input, input_area);
+        self.inp.draw(frame, input_area);
 
         let messages: Vec<ListItem> = self
             .messages
@@ -117,60 +101,22 @@ impl App {
             },
             Mode::Insert => {
                 match key.code {
-                    KeyCode::Backspace => self.remove_previous(),
-                    KeyCode::Delete => self.remove_next(),
-                    KeyCode::Enter => self.submit_message(),
-                    KeyCode::Char(c) => self.insert_char(c),
-                    KeyCode::Left => self.cursor_left(),
-                    KeyCode::Right => self.cursor_right(),
                     KeyCode::Esc => {
                         self.mode = Mode::Normal;
                         self.title = TITLE.to_string();
                     }
-                    _ => (),
-                };
+                    KeyCode::Enter => {
+                        if let Some(inp) = self.inp.submit_message() {
+                            self.messages.push(inp);
+                        }
+                    }
+                    _ => {
+                        self.inp.handle_key(key);
+                    }
+                }
+
                 false
             }
         }
-    }
-
-    fn cursor_left(&mut self) {
-        self.input_position = self.input_position.saturating_sub(1);
-    }
-
-    fn cursor_right(&mut self) {
-        if self.input_position < self.input.len() {
-            self.input_position += 1;
-        }
-    }
-
-    fn insert_char(&mut self, input: char) {
-        self.input.insert(self.input_position, input);
-        self.cursor_right();
-    }
-
-    fn remove_previous(&mut self) {
-        let current = self.input_position;
-        if current > 0 {
-            self.input.remove(current - 1);
-            self.cursor_left();
-        }
-    }
-
-    fn remove_next(&mut self) {
-        let current = self.input_position;
-        if current < self.input.len() {
-            self.input.remove(current);
-        }
-    }
-
-    fn reset_cursor(&mut self) {
-        self.input_position = 0;
-    }
-
-    fn submit_message(&mut self) {
-        self.messages.push(self.input.clone().into_iter().collect());
-        self.input.clear();
-        self.reset_cursor();
     }
 }
