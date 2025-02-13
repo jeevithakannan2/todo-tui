@@ -6,7 +6,6 @@ use ratatui::{
 use std::io::Result;
 
 mod app;
-mod input;
 use app::App;
 
 fn main() -> Result<()> {
