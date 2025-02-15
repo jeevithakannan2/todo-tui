@@ -6,6 +6,7 @@ use ratatui::{
 use std::io::Result;
 
 mod app;
+mod new_task;
 use app::App;
 
 fn main() -> Result<()> {
