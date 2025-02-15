@@ -215,6 +215,9 @@ impl NewTask<'_> {
 
         match self.mode {
             Mode::Normal => match key.code {
+                KeyCode::Char('q') => {
+                    self.completed = true;
+                }
                 KeyCode::Char('i') => {
                     if self.mode == Mode::Normal {
                         self.mode = Mode::Insert;
