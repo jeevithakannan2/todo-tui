@@ -1,12 +1,12 @@
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
-    layout::Flex,
     prelude::*,
+    style::Styled,
     widgets::{Block, BorderType, Clear, Paragraph},
 };
 use tui_textarea::TextArea;
 
-use crate::app::Todo;
+use crate::app::{popup_area, Todo};
 
 pub struct NewTask<'a> {
     focus: Focus,
@@ -59,9 +59,8 @@ impl NewTask<'_> {
         }
     }
 
-    pub fn draw(&mut self, frame: &mut Frame) {
-        let vertical = Layout::vertical([Constraint::Length(3), Constraint::Min(1)]);
-        let [title_area, body_area] = vertical.areas(frame.area());
+    pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
+        frame.render_widget(Clear, area);
 
         let (msg, style) = match self.mode {
             Mode::Normal => (
@@ -88,7 +87,23 @@ impl NewTask<'_> {
             ),
         };
 
-        let text = Line::from(msg).patch_style(style);
+        let text = Line::from(msg).centered().patch_style(style);
+        let style = if self.mode == Mode::Normal && self.focus != Focus::ConfirmPropmt {
+            Style::default().light_blue()
+        } else {
+            Style::default()
+        };
+
+        let main_block = Block::bordered()
+            .border_type(BorderType::Rounded)
+            .title(Span::styled(" New Task ", Style::default().bold()).into_centered_line())
+            .title_bottom(text)
+            .border_style(style);
+
+        frame.render_widget(&main_block, area);
+        let area = main_block.inner(area);
+        let vertical = Layout::vertical([Constraint::Length(3), Constraint::Min(1)]);
+        let [title_area, body_area] = vertical.areas(area);
 
         if self.mode == Mode::Insert {
             match self.focus {
@@ -114,58 +129,52 @@ impl NewTask<'_> {
         self.task.body.set_block(
             Block::bordered()
                 .border_type(BorderType::Rounded)
-                .title(" Body ")
-                .title_bottom(text.centered()),
+                .title(" Body "),
         );
+
+        let style = match self.mode {
+            Mode::Normal => Style::default(),
+            Mode::Insert => Style::default().light_blue(),
+        };
 
         match self.focus {
             Focus::Title => {
-                let block = self
-                    .task
-                    .title
-                    .block()
-                    .unwrap()
-                    .clone()
-                    .border_style(Style::default().light_blue());
+                let block = self.task.title.block().unwrap().clone().border_style(style);
                 self.task.title.set_block(block);
             }
             Focus::Body => {
-                let block = self
-                    .task
-                    .body
-                    .block()
-                    .unwrap()
-                    .clone()
-                    .border_style(Style::default().light_blue());
+                let block = self.task.body.block().unwrap().clone().border_style(style);
                 self.task.body.set_block(block);
             }
             Focus::ConfirmPropmt => {
-                let popup_area = Self::popup_area(frame.area(), 50, 50);
+                let popup_area = popup_area(frame.area(), 25, 25);
                 self.confirm_prompt(frame, popup_area);
             }
         }
-
         frame.render_widget(&self.task.title, title_area);
         frame.render_widget(&self.task.body, body_area);
     }
 
     fn confirm_prompt(&self, frame: &mut Frame, area: Rect) {
-        let text = Line::from("Do you want to save this todo?")
-            .patch_style(Style::default().fg(Color::Reset));
+        let text = vec![
+            " Press [".into(),
+            "y".set_style(Style::default().green()),
+            "] to confirm or [".into(),
+            "n".set_style(Style::default().red()),
+            "] to cancel ".into(),
+        ];
+
+        let text = Line::from(text).centered();
         let block = Block::bordered()
-            .title(" Confirm ")
-            .border_type(BorderType::Rounded);
-        let confirm = Paragraph::new(text).block(block);
+            .title(Line::from(" Confirm Save ").bold().centered())
+            .border_type(BorderType::Rounded)
+            .border_style(Style::default().light_blue())
+            .title_bottom(text)
+            .title_style(Style::default().reset());
+        let confirm =
+            Paragraph::new(Line::from("Do you want to save this task").centered()).block(block);
         frame.render_widget(Clear, area);
         frame.render_widget(confirm, area);
-    }
-
-    fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
-        let vertical = Layout::vertical([Constraint::Percentage(percent_y)]).flex(Flex::Center);
-        let horizontal = Layout::horizontal([Constraint::Percentage(percent_x)]).flex(Flex::Center);
-        let [area] = vertical.areas(area);
-        let [area] = horizontal.areas(area);
-        area
     }
 
     pub fn on_key(&mut self, key: KeyEvent) {
