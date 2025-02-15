@@ -82,19 +82,21 @@ impl App<'_> {
             AppFocus::TodoList => match key.code {
                 KeyCode::Char('q') => return true,
                 KeyCode::Char('n') => {
-                    self.new_task = NewTask::new();
+                    self.new_task.completed = false;
+                    self.new_task.quit = false;
                     self.focus = AppFocus::NewTask;
                 }
                 _ => {}
             },
             AppFocus::NewTask => {
                 self.new_task.on_key(key);
-                if self.new_task.completed {
-                    let todo = self.new_task.task.todo.clone();
-                    self.todos.push(todo);
+                if self.new_task.quit {
+                    if self.new_task.completed {
+                        let todo = self.new_task.task.todo.clone();
+                        self.todos.push(todo);
+                        self.save_todos().unwrap();
+                    }
                     self.focus = AppFocus::TodoList;
-                    self.save_todos().unwrap();
-                    self.new_task = NewTask::new();
                 }
             }
         }

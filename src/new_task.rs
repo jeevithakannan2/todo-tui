@@ -13,6 +13,7 @@ pub struct NewTask<'a> {
     pub mode: Mode,
     title: String,
     pub task: Task<'a>,
+    pub quit: bool,
     pub completed: bool,
 }
 
@@ -45,6 +46,7 @@ impl NewTask<'_> {
             focus: Focus::Title,
             mode: Mode::Normal,
             title: TITLE.to_string(),
+            quit: false,
             completed: false,
             task: Task {
                 title: TextArea::default(),
@@ -211,7 +213,11 @@ impl NewTask<'_> {
                         title: title_val,
                         description: body_val,
                     };
+                    self.task.title = TextArea::default();
+                    self.task.body = TextArea::default();
+                    self.quit = true;
                     self.completed = true;
+                    self.focus = Focus::Title;
                 }
                 KeyCode::Char('n') => {
                     self.focus = Focus::Title;
@@ -225,7 +231,8 @@ impl NewTask<'_> {
         match self.mode {
             Mode::Normal => match key.code {
                 KeyCode::Char('q') => {
-                    self.completed = true;
+                    self.focus = Focus::Title;
+                    self.quit = true;
                 }
                 KeyCode::Char('i') => {
                     if self.mode == Mode::Normal {
