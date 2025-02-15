@@ -2,7 +2,7 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     layout::Flex,
     prelude::*,
-    widgets::{Block, BorderType, List, ListItem},
+    widgets::{Block, BorderType, Clear, List, ListItem, ListState, Paragraph, Wrap},
 };
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -30,10 +30,12 @@ pub struct App<'a> {
     todos: Vec<Todo>,
     pub focus: AppFocus,
     new_task: NewTask<'a>,
+    selected: ListState,
 }
 
 #[derive(PartialEq)]
 pub enum AppFocus {
+    TaskView,
     NewTask,
     TodoList,
 }
@@ -44,6 +46,7 @@ impl App<'_> {
         Self {
             todos,
             focus: AppFocus::TodoList,
+            selected: ListState::default().with_selected(Some(0)),
             new_task: NewTask::new(),
         }
     }
@@ -52,9 +55,30 @@ impl App<'_> {
     pub fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
 
-        if self.focus == AppFocus::NewTask {
-            let new_task_area = popup_area(area, 75, 75);
-            self.new_task.draw(frame, new_task_area);
+        match self.focus {
+            AppFocus::NewTask => {
+                let new_task_area = popup_area(area, 75, 75);
+                self.new_task.draw(frame, new_task_area);
+            }
+
+            AppFocus::TaskView => {
+                let task_view_area = popup_area(area, 75, 75);
+                frame.render_widget(Clear, task_view_area);
+                let todo = self.todos.get(self.selected.selected().unwrap()).unwrap();
+                let title = format!(" {} ", todo.title.clone());
+                let description = todo.description.clone();
+                let task_view = Block::bordered()
+                    .title(Line::from(title).centered().reset_style())
+                    .border_type(BorderType::Rounded)
+                    .border_style(Style::default().fg(Color::LightBlue));
+                frame.render_widget(&task_view, task_view_area);
+                let descrition_area = task_view.inner(task_view_area);
+                let description = Paragraph::new(description)
+                    .style(Style::reset())
+                    .wrap(Wrap { trim: true });
+                frame.render_widget(description, descrition_area);
+            }
+            _ => {}
         }
 
         let style = if self.focus == AppFocus::TodoList {
@@ -66,20 +90,31 @@ impl App<'_> {
         let items: Vec<ListItem> = self
             .todos
             .iter()
-            .map(|todo| ListItem::new(todo.title.clone()))
+            .map(|todo| ListItem::new(format!(" > {}", todo.title.clone())))
             .collect();
-        let list = List::new(items).block(
-            Block::bordered()
-                .border_type(BorderType::Rounded)
-                .title(Line::from(" To-Do List ").bold().centered())
-                .border_style(style),
-        );
-        frame.render_widget(list, area);
+        let list = List::new(items)
+            .block(
+                Block::bordered()
+                    .border_type(BorderType::Rounded)
+                    .title(Line::from(" To-Do List ").bold().centered())
+                    .border_style(style),
+            )
+            .highlight_style(Style::default().reversed());
+
+        frame.render_stateful_widget(list, area, &mut self.selected);
     }
 
     pub fn on_key(&mut self, key: KeyEvent) -> bool {
         match self.focus {
+            AppFocus::TaskView => {
+                if key.code == KeyCode::Char('q') {
+                    self.focus = AppFocus::TodoList;
+                }
+            }
             AppFocus::TodoList => match key.code {
+                KeyCode::Down => self.select_next(),
+                KeyCode::Up => self.select_previous(),
+                KeyCode::Enter => self.open_selected(),
                 KeyCode::Char('q') => return true,
                 KeyCode::Char('n') => {
                     self.new_task.completed = false;
@@ -101,6 +136,18 @@ impl App<'_> {
             }
         }
         false
+    }
+
+    fn select_next(&mut self) {
+        self.selected.select_next();
+    }
+
+    fn select_previous(&mut self) {
+        self.selected.select_previous();
+    }
+
+    fn open_selected(&mut self) {
+        self.focus = AppFocus::TaskView;
     }
 
     fn save_todos(&self) -> io::Result<()> {
