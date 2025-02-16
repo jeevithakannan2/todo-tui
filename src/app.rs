@@ -42,7 +42,7 @@ impl App<'_> {
         Self {
             todos,
             focus: AppFocus::TodoList,
-            selected: ListState::default().with_selected(Some(0)),
+            selected: ListState::default(),
             new_task: NewTask::new(),
         }
     }
@@ -50,7 +50,7 @@ impl App<'_> {
     pub fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
 
-        let [main_area, footer_area] =
+        let [hero_area, footer_area] =
             Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(area);
 
         let style = if self.focus != AppFocus::NewTask {
@@ -59,63 +59,73 @@ impl App<'_> {
             Style::default()
         };
 
-        let border_block = Block::default()
-            .border_type(BorderType::Rounded)
-            .title(Line::from(" To-Do List ").bold().centered())
-            .border_style(style)
-            .borders(Borders::all());
-
-        frame.render_widget(&border_block, main_area);
-
-        let mut list_area = border_block.inner(main_area);
-
-        let [area_left, area_right] =
+        let [list_area, preview_area] =
             Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .areas(list_area);
-        list_area = area_left;
-        let todo = match self.todos.get(self.selected.selected().unwrap_or(0)) {
-            Some(todo) => todo,
-            None => &Todo {
-                title: "No tasks".to_string(),
-                description: "No tasks".to_string(),
-                completed: false,
-            },
-        };
+                .areas(hero_area);
 
-        let description = todo.description.clone();
-        let description_block = Block::bordered().borders(Borders::LEFT).border_style(style);
-        let description = Paragraph::new(description)
-            .style(Style::reset())
-            .block(description_block)
-            .wrap(Wrap { trim: true });
-
-        frame.render_widget(description, area_right);
-
-        match self.focus {
-            AppFocus::NewTask => {
-                let new_task_area = popup_area(main_area, 75, 75);
-                self.new_task.draw(frame, new_task_area);
-            }
-            _ => {}
-        }
+        let list_block = Block::bordered()
+            .title(Span::styled(" Todo List ", Style::default().reset()))
+            .title_alignment(Alignment::Center)
+            .borders(Borders::BOTTOM | Borders::TOP | Borders::LEFT)
+            .border_type(BorderType::Rounded)
+            .border_style(style);
 
         let items: Vec<ListItem> = self
             .todos
             .iter()
             .map(|todo| {
                 if todo.completed {
-                    ListItem::new(format!("  {}", todo.title.clone()))
+                    ListItem::new(format!("  {}", todo.title.as_str()))
                         .style(Style::default().fg(GREEN.c500))
                 } else {
-                    ListItem::new(format!("  {}", todo.title.clone()))
+                    ListItem::new(format!("  {}", todo.title.as_str()))
                 }
             })
             .collect();
         let list = List::new(items)
             .highlight_symbol("")
+            .block(list_block)
             .highlight_spacing(HighlightSpacing::WhenSelected);
 
         frame.render_stateful_widget(list, list_area, &mut self.selected);
+
+        let preview_block = Block::bordered()
+            .title(Span::styled(" Preview ", Style::default().reset()))
+            .title_alignment(Alignment::Center)
+            .borders(Borders::BOTTOM | Borders::TOP | Borders::RIGHT)
+            .border_type(BorderType::Rounded)
+            .border_style(style);
+
+        frame.render_widget(&preview_block, preview_area);
+
+        // Sometimes the ratatui list selection goes todos.len() + 1 so we need to clamp it
+        let todo = match self.selected.selected() {
+            Some(index) => match self
+                .todos
+                .get(index.min(self.todos.len().saturating_sub(1)))
+            {
+                Some(todo) => todo,
+                None => &Todo {
+                    title: String::new(),
+                    description: "No tasks selected".to_string(),
+                    completed: false,
+                },
+            },
+            None => &Todo {
+                title: String::new(),
+                description: "No tasks selected".to_string(),
+                completed: false,
+            },
+        };
+
+        // `preview_inner_block` is used to print the separation line between the list and the preview
+        let preview_inner_block = Block::bordered().borders(Borders::LEFT).border_style(style);
+        let description = Paragraph::new(todo.description.as_str())
+            .style(Style::reset())
+            .block(preview_inner_block)
+            .wrap(Wrap { trim: true });
+
+        frame.render_widget(description, preview_block.inner(preview_area));
 
         let footer =
             Paragraph::new(" [q] Quit | [n] New Task | [Enter] Open Task | [Space] Toggle Task ")
@@ -124,6 +134,11 @@ impl App<'_> {
                 .block(Block::default());
 
         frame.render_widget(footer, footer_area);
+
+        if self.focus == AppFocus::NewTask {
+            let new_task_area = popup_area(hero_area, 75, 75);
+            self.new_task.draw(frame, new_task_area);
+        }
     }
 
     pub fn on_key(&mut self, key: KeyEvent) -> bool {
