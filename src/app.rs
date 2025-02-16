@@ -8,11 +8,12 @@ use ratatui::{
     },
 };
 use serde::{Deserialize, Serialize};
-use serde_json;
-use std::fs;
-use std::io;
 
-use crate::new_task;
+use crate::{
+    handle_json::{load_todos, save_todos},
+    new_task,
+};
+
 use new_task::NewTask;
 
 #[derive(Debug, Serialize, Clone, Deserialize)]
@@ -20,13 +21,6 @@ pub struct Todo {
     pub title: String,
     pub description: String,
     pub completed: bool,
-}
-
-fn load_todos() -> io::Result<Vec<Todo>> {
-    let data = fs::read_to_string("todos.json").unwrap_or_else(|_| "[]".to_string());
-    let todos: Vec<Todo> =
-        serde_json::from_str(&data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    Ok(todos)
 }
 
 pub struct App<'a> {
@@ -139,7 +133,7 @@ impl App<'_> {
                 KeyCode::Up => self.select_previous(),
                 KeyCode::Char(' ') => self.toggle_completed(),
                 KeyCode::Char('q') => {
-                    self.save_todos().unwrap();
+                    save_todos(&self.todos).unwrap();
                     return true;
                 }
                 KeyCode::Char('n') => {
@@ -155,7 +149,7 @@ impl App<'_> {
                     if self.new_task.completed {
                         let todo = self.new_task.task.todo.clone();
                         self.todos.push(todo);
-                        self.save_todos().unwrap();
+                        save_todos(&self.todos).unwrap();
                     }
                     self.focus = AppFocus::TodoList;
                 }
@@ -181,11 +175,6 @@ impl App<'_> {
             ..todo.clone()
         };
         self.todos = todos;
-    }
-
-    fn save_todos(&self) -> io::Result<()> {
-        let data = serde_json::to_string(&self.todos)?;
-        fs::write("todos.json", data)
     }
 }
 
