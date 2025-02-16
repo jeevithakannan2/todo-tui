@@ -2,7 +2,11 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     layout::Flex,
     prelude::*,
-    widgets::{Block, BorderType, Clear, List, ListItem, ListState, Paragraph, Wrap},
+    style::palette::tailwind::GREEN,
+    widgets::{
+        Block, BorderType, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph,
+        Wrap,
+    },
 };
 use serde::{Deserialize, Serialize};
 use serde_json;
@@ -17,6 +21,7 @@ use new_task::NewTask;
 pub struct Todo {
     pub title: String,
     pub description: String,
+    pub completed: bool,
 }
 
 fn load_todos() -> io::Result<Vec<Todo>> {
@@ -54,15 +59,17 @@ impl App<'_> {
     // Render the UI.
     pub fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
+        let [main_area, footer_area] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(area);
 
         match self.focus {
             AppFocus::NewTask => {
-                let new_task_area = popup_area(area, 75, 75);
+                let new_task_area = popup_area(main_area, 75, 75);
                 self.new_task.draw(frame, new_task_area);
             }
 
             AppFocus::TaskView => {
-                let task_view_area = popup_area(area, 75, 75);
+                let task_view_area = popup_area(main_area, 75, 75);
                 frame.render_widget(Clear, task_view_area);
                 let todo = self.todos.get(self.selected.selected().unwrap()).unwrap();
                 let title = format!(" {} ", todo.title.clone());
@@ -90,18 +97,36 @@ impl App<'_> {
         let items: Vec<ListItem> = self
             .todos
             .iter()
-            .map(|todo| ListItem::new(format!(" > {}", todo.title.clone())))
+            .map(|todo| {
+                if todo.completed {
+                    ListItem::new(format!("  {}", todo.title.clone()))
+                        .style(Style::default().fg(GREEN.c500))
+                } else {
+                    ListItem::new(format!("  {}", todo.title.clone()))
+                }
+            })
             .collect();
         let list = List::new(items)
             .block(
-                Block::bordered()
+                Block::default()
                     .border_type(BorderType::Rounded)
                     .title(Line::from(" To-Do List ").bold().centered())
-                    .border_style(style),
+                    .border_style(style)
+                    .borders(Borders::all()),
             )
-            .highlight_style(Style::default().reversed());
+            .highlight_style(Style::default().reset().reversed())
+            .highlight_symbol(">")
+            .highlight_spacing(HighlightSpacing::Always);
 
-        frame.render_stateful_widget(list, area, &mut self.selected);
+        frame.render_stateful_widget(list, main_area, &mut self.selected);
+
+        let footer =
+            Paragraph::new(" [q] Quit | [n] New Task | [Enter] Open Task | [Space] Toggle Task ")
+                .style(Style::default().fg(Color::LightBlue))
+                .alignment(Alignment::Center)
+                .block(Block::default());
+
+        frame.render_widget(footer, footer_area);
     }
 
     pub fn on_key(&mut self, key: KeyEvent) -> bool {
@@ -115,7 +140,11 @@ impl App<'_> {
                 KeyCode::Down => self.select_next(),
                 KeyCode::Up => self.select_previous(),
                 KeyCode::Enter => self.open_selected(),
-                KeyCode::Char('q') => return true,
+                KeyCode::Char(' ') => self.toggle_completed(),
+                KeyCode::Char('q') => {
+                    self.save_todos().unwrap();
+                    return true;
+                }
                 KeyCode::Char('n') => {
                     self.new_task.completed = false;
                     self.new_task.quit = false;
@@ -148,6 +177,17 @@ impl App<'_> {
 
     fn open_selected(&mut self) {
         self.focus = AppFocus::TaskView;
+    }
+
+    fn toggle_completed(&mut self) {
+        let index = self.selected.selected().unwrap();
+        let todo = self.todos.get(index).unwrap();
+        let mut todos = self.todos.clone();
+        todos[index] = Todo {
+            completed: !todo.completed,
+            ..todo.clone()
+        };
+        self.todos = todos;
     }
 
     fn save_todos(&self) -> io::Result<()> {

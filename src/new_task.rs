@@ -56,6 +56,7 @@ impl NewTask<'_> {
                 todo: Todo {
                     title: String::new(),
                     description: String::new(),
+                    completed: false,
                 },
             },
         }
@@ -212,6 +213,7 @@ impl NewTask<'_> {
                     self.task.todo = Todo {
                         title: title_val,
                         description: body_val,
+                        completed: false,
                     };
                     self.task.title = TextArea::default();
                     self.task.body = TextArea::default();
