@@ -4,8 +4,7 @@ use ratatui::{
     prelude::*,
     style::palette::tailwind::GREEN,
     widgets::{
-        Block, BorderType, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph,
-        Wrap,
+        Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap,
     },
 };
 use serde::{Deserialize, Serialize};
@@ -16,7 +15,6 @@ use std::io;
 use crate::new_task;
 use new_task::NewTask;
 
-// Define your task type.
 #[derive(Debug, Serialize, Clone, Deserialize)]
 pub struct Todo {
     pub title: String,
@@ -40,7 +38,6 @@ pub struct App<'a> {
 
 #[derive(PartialEq)]
 pub enum AppFocus {
-    TaskView,
     NewTask,
     TodoList,
 }
@@ -56,43 +53,57 @@ impl App<'_> {
         }
     }
 
-    // Render the UI.
     pub fn draw(&mut self, frame: &mut Frame) {
         let area = frame.area();
+
         let [main_area, footer_area] =
             Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(area);
+
+        let style = if self.focus != AppFocus::NewTask {
+            Style::default().light_blue()
+        } else {
+            Style::default()
+        };
+
+        let border_block = Block::default()
+            .border_type(BorderType::Rounded)
+            .title(Line::from(" To-Do List ").bold().centered())
+            .border_style(style)
+            .borders(Borders::all());
+
+        frame.render_widget(&border_block, main_area);
+
+        let mut list_area = border_block.inner(main_area);
+
+        let [area_left, area_right] =
+            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .areas(list_area);
+        list_area = area_left;
+        let todo = match self.todos.get(self.selected.selected().unwrap_or(0)) {
+            Some(todo) => todo,
+            None => &Todo {
+                title: "No tasks".to_string(),
+                description: "No tasks".to_string(),
+                completed: false,
+            },
+        };
+
+        let description = todo.description.clone();
+        let description_block = Block::bordered().borders(Borders::LEFT).border_style(style);
+        let description = Paragraph::new(description)
+            .style(Style::reset())
+            .block(description_block)
+            .wrap(Wrap { trim: true });
+
+        frame.render_widget(description, area_right);
 
         match self.focus {
             AppFocus::NewTask => {
                 let new_task_area = popup_area(main_area, 75, 75);
                 self.new_task.draw(frame, new_task_area);
             }
-
-            AppFocus::TaskView => {
-                let task_view_area = popup_area(main_area, 75, 75);
-                frame.render_widget(Clear, task_view_area);
-                let todo = self.todos.get(self.selected.selected().unwrap()).unwrap();
-                let title = format!(" {} ", todo.title.clone());
-                let description = todo.description.clone();
-                let task_view = Block::bordered()
-                    .title(Line::from(title).centered().reset_style())
-                    .border_type(BorderType::Rounded)
-                    .border_style(Style::default().fg(Color::LightBlue));
-                frame.render_widget(&task_view, task_view_area);
-                let descrition_area = task_view.inner(task_view_area);
-                let description = Paragraph::new(description)
-                    .style(Style::reset())
-                    .wrap(Wrap { trim: true });
-                frame.render_widget(description, descrition_area);
-            }
             _ => {}
         }
-
-        let style = if self.focus == AppFocus::TodoList {
-            Style::default().light_blue()
-        } else {
-            Style::default()
-        };
 
         let items: Vec<ListItem> = self
             .todos
@@ -107,22 +118,14 @@ impl App<'_> {
             })
             .collect();
         let list = List::new(items)
-            .block(
-                Block::default()
-                    .border_type(BorderType::Rounded)
-                    .title(Line::from(" To-Do List ").bold().centered())
-                    .border_style(style)
-                    .borders(Borders::all()),
-            )
-            .highlight_style(Style::default().reset().reversed())
-            .highlight_symbol(">")
-            .highlight_spacing(HighlightSpacing::Always);
+            .highlight_symbol("")
+            .highlight_spacing(HighlightSpacing::WhenSelected);
 
-        frame.render_stateful_widget(list, main_area, &mut self.selected);
+        frame.render_stateful_widget(list, list_area, &mut self.selected);
 
         let footer =
             Paragraph::new(" [q] Quit | [n] New Task | [Enter] Open Task | [Space] Toggle Task ")
-                .style(Style::default().fg(Color::LightBlue))
+                .style(Style::default())
                 .alignment(Alignment::Center)
                 .block(Block::default());
 
@@ -131,15 +134,9 @@ impl App<'_> {
 
     pub fn on_key(&mut self, key: KeyEvent) -> bool {
         match self.focus {
-            AppFocus::TaskView => {
-                if key.code == KeyCode::Char('q') {
-                    self.focus = AppFocus::TodoList;
-                }
-            }
             AppFocus::TodoList => match key.code {
                 KeyCode::Down => self.select_next(),
                 KeyCode::Up => self.select_previous(),
-                KeyCode::Enter => self.open_selected(),
                 KeyCode::Char(' ') => self.toggle_completed(),
                 KeyCode::Char('q') => {
                     self.save_todos().unwrap();
@@ -173,10 +170,6 @@ impl App<'_> {
 
     fn select_previous(&mut self) {
         self.selected.select_previous();
-    }
-
-    fn open_selected(&mut self) {
-        self.focus = AppFocus::TaskView;
     }
 
     fn toggle_completed(&mut self) {

@@ -121,7 +121,9 @@ impl NewTask<'_> {
         }
 
         self.task.title.set_cursor_style(self.task.title_style);
+        self.task.title.set_cursor_line_style(Style::default());
         self.task.body.set_cursor_style(self.task.body_style);
+        self.task.body.set_cursor_line_style(Style::default());
 
         self.task.title.set_block(
             Block::bordered()
