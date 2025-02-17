@@ -83,6 +83,7 @@ impl NewTask<'_> {
             quit: false,
             completed: false,
             todo: Todo {
+                // id: 0,
                 title: String::new(),
                 description: String::new(),
                 completed: false,
@@ -155,6 +156,7 @@ impl NewTask<'_> {
                         .collect::<Vec<&str>>()
                         .join("\n");
                     self.todo = Todo {
+                        // id: 0, // Will be updated later when pushing to the list
                         title: title_val,
                         description: description_val,
                         completed: false,

@@ -107,12 +107,14 @@ impl App<'_> {
             {
                 Some(todo) => todo,
                 None => &Todo {
+                    // id: 0,
                     title: String::new(),
                     description: "No tasks selected".to_string(),
                     completed: false,
                 },
             },
             None => &Todo {
+                // id: 0,
                 title: String::new(),
                 description: "No tasks selected".to_string(),
                 completed: false,
@@ -153,6 +155,7 @@ impl App<'_> {
                     save_todos(&self.todos).unwrap();
                     return true;
                 }
+                KeyCode::Char('d') => self.delete_entry(),
                 KeyCode::Char('n') => {
                     self.new_task.completed = false;
                     self.new_task.quit = false;
@@ -165,6 +168,7 @@ impl App<'_> {
                 if self.new_task.quit {
                     if self.new_task.completed {
                         let todo = self.new_task.todo.clone();
+                        // todo.id = self.todos.len() as u16;
                         self.todos.push(todo);
                         save_todos(&self.todos).unwrap();
                         self.new_task = NewTask::new();
@@ -201,17 +205,17 @@ impl App<'_> {
     }
 
     fn toggle_completed(&mut self) {
-        let index = match self.selected.selected() {
-            Some(index) => index,
-            None => return,
-        };
-        let todo = self.todos.get(index).unwrap();
-        let mut todos = self.todos.clone();
-        todos[index] = Todo {
-            completed: !todo.completed,
-            ..todo.clone()
-        };
-        self.todos = todos;
+        if let Some(index) = self.selected.selected() {
+            if let Some(todo) = self.todos.get_mut(index) {
+                todo.completed = !todo.completed;
+            }
+        }
+    }
+
+    fn delete_entry(&mut self) {
+        if let Some(index) = self.selected.selected() {
+            self.todos.remove(index);
+        }
     }
 }
 
