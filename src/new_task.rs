@@ -2,16 +2,15 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
     style::Styled,
-    widgets::{Block, BorderType, Clear, Paragraph},
+    widgets::{Block, BorderType, Clear, Paragraph, Wrap},
 };
 use tui_textarea::TextArea;
 
-use crate::app::{popup_area, Todo};
+use crate::app::{popup_area, Todo, SECONDARY_STYLE};
 
 pub struct NewTask<'a> {
     focus: Focus,
     pub mode: Mode,
-    title: String,
     pub task: Task<'a>,
     pub quit: bool,
     pub completed: bool,
@@ -19,9 +18,7 @@ pub struct NewTask<'a> {
 
 pub struct Task<'a> {
     title: TextArea<'a>,
-    title_style: Style,
-    body: TextArea<'a>,
-    body_style: Style,
+    description: TextArea<'a>,
     pub todo: Todo,
 }
 
@@ -34,25 +31,20 @@ pub(crate) enum Mode {
 #[derive(PartialEq)]
 enum Focus {
     Title,
-    Body,
+    Description,
     ConfirmPropmt,
 }
-
-const TITLE: &str = " TODO List ";
 
 impl NewTask<'_> {
     pub fn new() -> Self {
         Self {
             focus: Focus::Title,
             mode: Mode::Normal,
-            title: TITLE.to_string(),
             quit: false,
             completed: false,
             task: Task {
                 title: TextArea::default(),
-                title_style: Style::default(),
-                body: TextArea::default(),
-                body_style: Style::default(),
+                description: TextArea::default(),
                 todo: Todo {
                     title: String::new(),
                     description: String::new(),
@@ -65,168 +57,124 @@ impl NewTask<'_> {
     pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
         frame.render_widget(Clear, area);
 
-        let (msg, style) = match self.mode {
-            Mode::Normal => (
-                vec![
-                    " Press ".into(),
-                    "q".bold(),
-                    " to exit, ".into(),
-                    "i".bold(),
-                    " to start editing. ".bold(),
-                ],
-                Style::default()
-                    .add_modifier(Modifier::SLOW_BLINK)
-                    .fg(Color::Reset),
-            ),
-            Mode::Insert => (
-                vec![
-                    " Press ".into(),
-                    "Esc".bold(),
-                    " to stop editing, ".into(),
-                    "Enter".bold(),
-                    " to record the message. ".into(),
-                ],
-                Style::default().fg(Color::Reset),
-            ),
-        };
-
-        let text = Line::from(msg).centered().patch_style(style);
         let style = if self.mode == Mode::Normal && self.focus != Focus::ConfirmPropmt {
-            Style::default().light_blue()
+            SECONDARY_STYLE
         } else {
             Style::default()
         };
 
-        let main_block = Block::bordered()
+        let hero_block = Block::bordered()
             .border_type(BorderType::Rounded)
-            .title(Span::styled(" New Task ", Style::default().bold()).into_centered_line())
-            .title_bottom(text)
+            .title(" New Task ")
+            .title_style(Style::default().reset().bold())
+            .title_alignment(Alignment::Center)
             .border_style(style);
 
-        frame.render_widget(&main_block, area);
-        let area = main_block.inner(area);
+        frame.render_widget(&hero_block, area);
+        let area = hero_block.inner(area);
         let vertical = Layout::vertical([Constraint::Length(3), Constraint::Min(1)]);
-        let [title_area, body_area] = vertical.areas(area);
+        let [title_area, description_area] = vertical.areas(area);
 
-        if self.mode == Mode::Insert {
+        // cursor_style (title, description)
+        let cursor_style = if self.mode == Mode::Insert {
             match self.focus {
-                Focus::Title => {
-                    self.task.title_style = Style::default().reversed();
-                }
-                Focus::Body => {
-                    self.task.body_style = Style::default().reversed();
-                }
-                _ => {}
+                Focus::Title => (Style::default().reversed(), Style::default()),
+                Focus::Description => (Style::default(), Style::default().reversed()),
+                Focus::ConfirmPropmt => (Style::default(), Style::default()),
             }
-        }
+        } else {
+            (Style::default(), Style::default())
+        };
 
-        self.task.title.set_cursor_style(self.task.title_style);
+        self.task.title.set_cursor_style(cursor_style.0);
+        self.task.description.set_cursor_style(cursor_style.1);
+
+        // Removes the underline when typed
         self.task.title.set_cursor_line_style(Style::default());
-        self.task.body.set_cursor_style(self.task.body_style);
-        self.task.body.set_cursor_line_style(Style::default());
+        self.task
+            .description
+            .set_cursor_line_style(Style::default());
+
+        // border_style (title, description)
+        let border_style = if self.mode == Mode::Normal {
+            (Style::default(), Style::default())
+        } else {
+            match self.focus {
+                Focus::Title => (SECONDARY_STYLE, Style::default()),
+                Focus::Description => (Style::default(), SECONDARY_STYLE),
+                Focus::ConfirmPropmt => (Style::default(), Style::default()),
+            }
+        };
 
         self.task.title.set_block(
             Block::bordered()
                 .border_type(BorderType::Rounded)
+                .border_style(border_style.0)
                 .title(" Title "),
         );
 
-        self.task.body.set_block(
+        self.task.description.set_block(
             Block::bordered()
                 .border_type(BorderType::Rounded)
-                .title(" Body "),
+                .border_style(border_style.1)
+                .title(" Description "),
         );
 
-        let style = match self.mode {
-            Mode::Normal => Style::default(),
-            Mode::Insert => Style::default().light_blue(),
-        };
-
-        match self.focus {
-            Focus::Title => {
-                let block = self.task.title.block().unwrap().clone().border_style(style);
-                self.task.title.set_block(block);
-            }
-            Focus::Body => {
-                let block = self.task.body.block().unwrap().clone().border_style(style);
-                self.task.body.set_block(block);
-            }
-            Focus::ConfirmPropmt => {
-                let popup_area = popup_area(frame.area(), 25, 25);
-                self.confirm_prompt(frame, popup_area);
-            }
-        }
         frame.render_widget(&self.task.title, title_area);
-        frame.render_widget(&self.task.body, body_area);
+        frame.render_widget(&self.task.description, description_area);
+
+        if self.focus == Focus::ConfirmPropmt {
+            let popup_area = popup_area(area, 30, 25);
+            self.confirm_prompt(frame, popup_area);
+        }
     }
 
     fn confirm_prompt(&self, frame: &mut Frame, area: Rect) {
-        let text = vec![
-            " Press [".into(),
-            "y".set_style(Style::default().green()),
-            "] to confirm or [".into(),
-            "n".set_style(Style::default().red()),
-            "] to cancel ".into(),
-        ];
-
-        let text = Line::from(text).centered();
         let block = Block::bordered()
             .title(Line::from(" Confirm Save ").bold().centered())
             .border_type(BorderType::Rounded)
-            .border_style(Style::default().light_blue())
-            .title_bottom(text)
+            .border_style(SECONDARY_STYLE)
+            .title_bottom(vec![
+                " [ ".into(),
+                "y".set_style(Style::default().green()),
+                " ] ".into(),
+            ])
+            .title_bottom(vec![
+                " [ ".into(),
+                "n".set_style(Style::default().red()),
+                " ] ".into(),
+            ])
+            .title_alignment(Alignment::Center)
             .title_style(Style::default().reset());
-        let confirm =
-            Paragraph::new(Line::from("Do you want to save this task").centered()).block(block);
+        let confirm = Paragraph::new(Line::from("Do you want to save this task").centered())
+            .wrap(Wrap { trim: true })
+            .block(block);
         frame.render_widget(Clear, area);
         frame.render_widget(confirm, area);
     }
 
     pub fn on_key(&mut self, key: KeyEvent) {
-        if key.code == KeyCode::Tab {
-            self.focus = match self.focus {
-                Focus::Title => {
-                    self.task.title_style = Style::default();
-                    Focus::Body
-                }
-
-                Focus::Body => {
-                    self.task.body_style = Style::default();
-                    Focus::Title
-                }
-
-                Focus::ConfirmPropmt => Focus::ConfirmPropmt,
-            };
-            return;
-        }
-
         if self.focus == Focus::ConfirmPropmt {
             match key.code {
                 KeyCode::Char('y') => {
                     let title_val = self.task.title.lines()[0].to_string();
-                    let body_val = self
+                    let description_val = self
                         .task
-                        .body
+                        .description
                         .lines()
-                        .into_iter()
+                        .iter()
                         .map(|s| s.as_str())
                         .collect::<Vec<&str>>()
                         .join("\n");
                     self.task.todo = Todo {
                         title: title_val,
-                        description: body_val,
+                        description: description_val,
                         completed: false,
                     };
-                    self.task.title = TextArea::default();
-                    self.task.body = TextArea::default();
                     self.quit = true;
                     self.completed = true;
-                    self.focus = Focus::Title;
                 }
-                KeyCode::Char('n') => {
-                    self.focus = Focus::Title;
-                    self.mode = Mode::Normal;
-                }
+                KeyCode::Char('n') => self.focus = Focus::Title,
                 _ => {}
             }
             return;
@@ -241,7 +189,6 @@ impl NewTask<'_> {
                 KeyCode::Char('i') => {
                     if self.mode == Mode::Normal {
                         self.mode = Mode::Insert;
-                        self.title = format!("{}(Insert Mode) ", TITLE);
                     }
                 }
                 KeyCode::Enter => {
@@ -251,19 +198,23 @@ impl NewTask<'_> {
                 _ => {}
             },
             Mode::Insert => match key.code {
-                KeyCode::Esc => {
-                    self.mode = Mode::Normal;
-                    self.title = TITLE.to_string();
-                    self.task.title_style = Style::default();
-                    self.task.body_style = Style::default();
+                KeyCode::Esc => self.mode = Mode::Normal,
+                KeyCode::Tab | KeyCode::BackTab => {
+                    self.focus = match self.focus {
+                        Focus::Title => Focus::Description,
+                        Focus::Description => Focus::Title,
+                        Focus::ConfirmPropmt => Focus::ConfirmPropmt,
+                    }
                 }
                 _ => match self.focus {
                     Focus::Title => {
-                        if key.code == KeyCode::Enter {}
+                        if key.code == KeyCode::Enter {
+                            return;
+                        }
                         self.task.title.input(key);
                     }
-                    Focus::Body => {
-                        self.task.body.input(key);
+                    Focus::Description => {
+                        self.task.description.input(key);
                     }
                     _ => {}
                 },

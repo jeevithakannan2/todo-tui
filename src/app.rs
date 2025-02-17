@@ -36,6 +36,8 @@ pub enum AppFocus {
     TodoList,
 }
 
+pub const SECONDARY_STYLE: Style = Style::new().fg(Color::LightBlue);
+
 impl App<'_> {
     pub fn new() -> Self {
         let todos = load_todos().unwrap_or_else(|_| Vec::new());
@@ -54,7 +56,7 @@ impl App<'_> {
             Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(area);
 
         let style = if self.focus != AppFocus::NewTask {
-            Style::default().light_blue()
+            SECONDARY_STYLE
         } else {
             Style::default()
         };
@@ -64,8 +66,9 @@ impl App<'_> {
                 .areas(hero_area);
 
         let list_block = Block::bordered()
-            .title(Span::styled(" Todo List ", Style::default().reset()))
+            .title(" Todo List ")
             .title_alignment(Alignment::Center)
+            .title_style(Style::default().reset().bold())
             .borders(Borders::BOTTOM | Borders::TOP | Borders::LEFT)
             .border_type(BorderType::Rounded)
             .border_style(style);
@@ -90,8 +93,9 @@ impl App<'_> {
         frame.render_stateful_widget(list, list_area, &mut self.selected);
 
         let preview_block = Block::bordered()
-            .title(Span::styled(" Preview ", Style::default().reset()))
+            .title(" Preview ")
             .title_alignment(Alignment::Center)
+            .title_style(Style::default().reset().bold())
             .borders(Borders::BOTTOM | Borders::TOP | Borders::RIGHT)
             .border_type(BorderType::Rounded)
             .border_style(style);
@@ -165,6 +169,7 @@ impl App<'_> {
                         let todo = self.new_task.task.todo.clone();
                         self.todos.push(todo);
                         save_todos(&self.todos).unwrap();
+                        self.new_task = NewTask::new();
                     }
                     self.focus = AppFocus::TodoList;
                 }
