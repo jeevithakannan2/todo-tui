@@ -1,15 +1,13 @@
+use app::App;
 use ratatui::{
     crossterm::event::{self, Event, KeyEventKind},
-    // prelude::*,
     DefaultTerminal,
 };
 use std::io::Result;
 
 mod app;
-mod new_task;
 mod handle_json;
-
-use app::App;
+mod new_task;
 
 fn main() -> Result<()> {
     let mut terminal = ratatui::init();

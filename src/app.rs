@@ -1,3 +1,8 @@
+use crate::{
+    handle_json::{load_todos, save_todos, Todo},
+    new_task,
+};
+use new_task::NewTask;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     layout::Flex,
@@ -7,47 +12,37 @@ use ratatui::{
         Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap,
     },
 };
-use serde::{Deserialize, Serialize};
-
-use crate::{
-    handle_json::{load_todos, save_todos},
-    new_task,
-};
-
-use new_task::NewTask;
-
-#[derive(Debug, Serialize, Clone, Deserialize)]
-pub struct Todo {
-    pub title: String,
-    pub description: String,
-    pub completed: bool,
-}
 
 pub struct App<'a> {
-    todos: Vec<Todo>,
-    pub focus: AppFocus,
-    new_task: NewTask<'a>,
-    selected: ListState,
+    // Used to determine which part of the app is currently in focus
+    focus: AppFocus,
+    // The last selected index of the todo list before clearing the selection
     last_selected: Option<usize>,
+    // The state of the new task popup
+    new_task: NewTask<'a>,
+    // The state of the todo list
+    selected: ListState,
+    // The list of parsed todos from json
+    todos: Vec<Todo>,
 }
 
 #[derive(PartialEq)]
-pub enum AppFocus {
+enum AppFocus {
     NewTask,
     TodoList,
 }
 
-pub const SECONDARY_STYLE: Style = Style::new().fg(Color::LightBlue);
+pub const SECONDARY_STYLE: Style = Style::new().fg(Color::Blue);
 
 impl App<'_> {
     pub fn new() -> Self {
         let todos = load_todos().unwrap_or_else(|_| Vec::new());
         Self {
-            todos,
             focus: AppFocus::TodoList,
-            selected: ListState::default(),
-            new_task: NewTask::new(),
             last_selected: None,
+            new_task: NewTask::new(),
+            selected: ListState::default(),
+            todos,
         }
     }
 
@@ -169,7 +164,7 @@ impl App<'_> {
                 self.new_task.on_key(key);
                 if self.new_task.quit {
                     if self.new_task.completed {
-                        let todo = self.new_task.task.todo.clone();
+                        let todo = self.new_task.todo.clone();
                         self.todos.push(todo);
                         save_todos(&self.todos).unwrap();
                         self.new_task = NewTask::new();

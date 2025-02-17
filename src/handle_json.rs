@@ -1,5 +1,12 @@
-use crate::app::Todo;
+use serde::{Deserialize, Serialize};
 use std::{fs, io};
+
+#[derive(Serialize, Clone, Deserialize)]
+pub struct Todo {
+    pub title: String,
+    pub description: String,
+    pub completed: bool,
+}
 
 pub fn load_todos() -> io::Result<Vec<Todo>> {
     let data = fs::read_to_string("todos.json").unwrap_or_else(|_| "[]".to_string());
