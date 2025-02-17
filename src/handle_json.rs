@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::{fs, io};
 
-#[derive(Serialize, Clone, Deserialize)]
+#[derive(Serialize, Clone, PartialEq, Deserialize)]
 pub struct Todo {
-    // pub id: u16,
     pub title: String,
     pub description: String,
     pub completed: bool,

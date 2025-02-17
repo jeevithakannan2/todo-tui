@@ -7,9 +7,10 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     layout::Flex,
     prelude::*,
-    style::palette::tailwind::GREEN,
+    style::palette::tailwind::{GREEN, RED},
     widgets::{
-        Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap,
+        Block, BorderType, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph,
+        Wrap,
     },
 };
 
@@ -18,10 +19,14 @@ pub struct App<'a> {
     focus: AppFocus,
     // The last selected index of the todo list before clearing the selection
     last_selected: Option<usize>,
+    // Multi select mode
+    multi_select: bool,
     // The state of the new task popup
     new_task: NewTask<'a>,
     // The state of the todo list
     selected: ListState,
+    // Selected entries
+    selected_entries: Vec<Todo>,
     // The list of parsed todos from json
     todos: Vec<Todo>,
 }
@@ -30,6 +35,7 @@ pub struct App<'a> {
 enum AppFocus {
     NewTask,
     TodoList,
+    DeletePrompt,
 }
 
 pub const SECONDARY_STYLE: Style = Style::new().fg(Color::Blue);
@@ -40,8 +46,10 @@ impl App<'_> {
         Self {
             focus: AppFocus::TodoList,
             last_selected: None,
+            multi_select: false,
             new_task: NewTask::new(),
             selected: ListState::default(),
+            selected_entries: Vec::new(),
             todos,
         }
     }
@@ -74,7 +82,10 @@ impl App<'_> {
             .todos
             .iter()
             .map(|todo| {
-                if todo.completed {
+                if self.selected_entries.contains(&todo) {
+                    ListItem::new(format!("  {}", todo.title.as_str()))
+                        .style(Style::default().fg(RED.c500))
+                } else if todo.completed {
                     ListItem::new(format!("  {}", todo.title.as_str()))
                         .style(Style::default().fg(GREEN.c500))
                 } else {
@@ -107,14 +118,12 @@ impl App<'_> {
             {
                 Some(todo) => todo,
                 None => &Todo {
-                    // id: 0,
                     title: String::new(),
                     description: "No tasks selected".to_string(),
                     completed: false,
                 },
             },
             None => &Todo {
-                // id: 0,
                 title: String::new(),
                 description: "No tasks selected".to_string(),
                 completed: false,
@@ -138,9 +147,20 @@ impl App<'_> {
 
         frame.render_widget(footer, footer_area);
 
-        if self.focus == AppFocus::NewTask {
-            let new_task_area = popup_area(hero_area, 75, 75);
-            self.new_task.draw(frame, new_task_area);
+        match self.focus {
+            AppFocus::NewTask => {
+                let new_task_area = popup_area(hero_area, 75, 75);
+                self.new_task.draw(frame, new_task_area);
+            }
+            AppFocus::DeletePrompt => {
+                confirm_prompt(
+                    frame,
+                    hero_area,
+                    " Delete Task ",
+                    "Are you sure you want to delete the selected task(s)?",
+                );
+            }
+            _ => {}
         }
     }
 
@@ -150,12 +170,22 @@ impl App<'_> {
                 KeyCode::Down => self.select_next(),
                 KeyCode::Up => self.select_previous(),
                 KeyCode::Esc => self.select_none(),
-                KeyCode::Char(' ') => self.toggle_completed(),
+                KeyCode::Char(' ') => {
+                    if self.multi_select {
+                        self.toggle_delete();
+                    } else {
+                        self.toggle_completed();
+                    }
+                }
+                KeyCode::Char('v') => {
+                    self.multi_select = !self.multi_select;
+                    self.selected_entries.clear();
+                }
                 KeyCode::Char('q') => {
                     save_todos(&self.todos).unwrap();
                     return true;
                 }
-                KeyCode::Char('d') => self.delete_entry(),
+                KeyCode::Char('d') => self.focus = AppFocus::DeletePrompt,
                 KeyCode::Char('n') => {
                     self.new_task.completed = false;
                     self.new_task.quit = false;
@@ -168,7 +198,6 @@ impl App<'_> {
                 if self.new_task.quit {
                     if self.new_task.completed {
                         let todo = self.new_task.todo.clone();
-                        // todo.id = self.todos.len() as u16;
                         self.todos.push(todo);
                         save_todos(&self.todos).unwrap();
                         self.new_task = NewTask::new();
@@ -176,8 +205,32 @@ impl App<'_> {
                     self.focus = AppFocus::TodoList;
                 }
             }
+            AppFocus::DeletePrompt => match key.code {
+                KeyCode::Char('y') => {
+                    self.delete_entry();
+                    self.focus = AppFocus::TodoList;
+                }
+                KeyCode::Char('n') => self.focus = AppFocus::TodoList,
+                _ => {}
+            },
         }
         false
+    }
+
+    fn get_selected(&self) -> Option<Todo> {
+        self.selected
+            .selected()
+            .and_then(|index| self.todos.get(index).cloned())
+    }
+
+    fn toggle_delete(&mut self) {
+        if let Some(todo) = self.get_selected() {
+            if self.selected_entries.contains(&todo) {
+                self.selected_entries.retain(|t| *t != todo);
+            } else {
+                self.selected_entries.push(todo.clone());
+            }
+        }
     }
 
     fn select_next(&mut self) {
@@ -213,8 +266,15 @@ impl App<'_> {
     }
 
     fn delete_entry(&mut self) {
-        if let Some(index) = self.selected.selected() {
-            self.todos.remove(index);
+        if self.selected_entries.is_empty() {
+            if let Some(index) = self.selected.selected() {
+                self.todos.remove(index);
+            }
+            return;
+        } else {
+            for todo in self.selected_entries.iter() {
+                self.todos.retain(|t| t != todo);
+            }
         }
     }
 }
@@ -225,4 +285,29 @@ pub fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
     let [area] = vertical.areas(area);
     let [area] = horizontal.areas(area);
     area
+}
+
+pub fn confirm_prompt(frame: &mut Frame, area: Rect, title: &str, description: &str) {
+    let popup_area = popup_area(area, 30, 25);
+    let block = Block::bordered()
+        .title(Line::from(title).bold().centered())
+        .border_type(BorderType::Rounded)
+        .border_style(SECONDARY_STYLE)
+        .title_bottom(vec![
+            " [ ".into(),
+            Span::styled("Y", Style::default().green().bold()),
+            " ] ".into(),
+        ])
+        .title_bottom(vec![
+            " [ ".into(),
+            Span::styled("N", Style::default().red().bold()),
+            " ] ".into(),
+        ])
+        .title_alignment(Alignment::Center)
+        .title_style(Style::default().reset());
+    let confirm = Paragraph::new(Line::from(description).centered())
+        .wrap(Wrap { trim: true })
+        .block(block);
+    frame.render_widget(Clear, popup_area);
+    frame.render_widget(confirm, popup_area);
 }

@@ -1,12 +1,8 @@
-use crate::{
-    app::{popup_area, SECONDARY_STYLE},
-    handle_json::Todo,
-};
+use crate::{app::SECONDARY_STYLE, handle_json::Todo};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
-    style::Styled,
-    widgets::{Block, BorderType, Clear, Paragraph, Wrap},
+    widgets::{Block, BorderType, Clear},
 };
 use tui_textarea::TextArea;
 
@@ -83,7 +79,6 @@ impl NewTask<'_> {
             quit: false,
             completed: false,
             todo: Todo {
-                // id: 0,
                 title: String::new(),
                 description: String::new(),
                 completed: false,
@@ -113,33 +108,13 @@ impl NewTask<'_> {
         frame.render_widget(&self.widgets.description, description_area);
 
         if self.focus == Focus::ConfirmPropmt {
-            let popup_area = popup_area(area, 30, 25);
-            self.confirm_prompt(frame, popup_area);
+            crate::app::confirm_prompt(
+                frame,
+                area,
+                " Confirm Save ",
+                "Do you want to save this task",
+            );
         }
-    }
-
-    fn confirm_prompt(&self, frame: &mut Frame, area: Rect) {
-        let block = Block::bordered()
-            .title(Line::from(" Confirm Save ").bold().centered())
-            .border_type(BorderType::Rounded)
-            .border_style(SECONDARY_STYLE)
-            .title_bottom(vec![
-                " [ ".into(),
-                "Y".set_style(Style::default().green().bold()),
-                " ] ".into(),
-            ])
-            .title_bottom(vec![
-                " [ ".into(),
-                "N".set_style(Style::default().red().bold()),
-                " ] ".into(),
-            ])
-            .title_alignment(Alignment::Center)
-            .title_style(Style::default().reset());
-        let confirm = Paragraph::new(Line::from("Do you want to save this task").centered())
-            .wrap(Wrap { trim: true })
-            .block(block);
-        frame.render_widget(Clear, area);
-        frame.render_widget(confirm, area);
     }
 
     pub fn on_key(&mut self, key: KeyEvent) {
@@ -156,7 +131,6 @@ impl NewTask<'_> {
                         .collect::<Vec<&str>>()
                         .join("\n");
                     self.todo = Todo {
-                        // id: 0, // Will be updated later when pushing to the list
                         title: title_val,
                         description: description_val,
                         completed: false,
