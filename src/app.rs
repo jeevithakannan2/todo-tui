@@ -140,7 +140,7 @@ impl App<'_> {
         frame.render_widget(description, preview_block.inner(preview_area));
 
         let footer =
-            Paragraph::new(" [q] Quit | [n] New Task | [Enter] Open Task | [Space] Toggle Task ")
+            Paragraph::new(" [q] Quit | [n] New Task | [d] Delete Task | [v] Multi select | [Enter] Open Task | [Space] Toggle Task ")
                 .style(Style::default())
                 .alignment(Alignment::Center)
                 .block(Block::default());
