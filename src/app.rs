@@ -28,6 +28,7 @@ pub struct App<'a> {
     pub focus: AppFocus,
     new_task: NewTask<'a>,
     selected: ListState,
+    last_selected: Option<usize>,
 }
 
 #[derive(PartialEq)]
@@ -46,6 +47,7 @@ impl App<'_> {
             focus: AppFocus::TodoList,
             selected: ListState::default(),
             new_task: NewTask::new(),
+            last_selected: None,
         }
     }
 
@@ -150,6 +152,7 @@ impl App<'_> {
             AppFocus::TodoList => match key.code {
                 KeyCode::Down => self.select_next(),
                 KeyCode::Up => self.select_previous(),
+                KeyCode::Esc => self.select_none(),
                 KeyCode::Char(' ') => self.toggle_completed(),
                 KeyCode::Char('q') => {
                     save_todos(&self.todos).unwrap();
@@ -179,15 +182,34 @@ impl App<'_> {
     }
 
     fn select_next(&mut self) {
+        if let Some(index) = self.last_selected {
+            self.selected.select(Some(index));
+            self.last_selected = None;
+            return;
+        }
+
         self.selected.select_next();
     }
 
     fn select_previous(&mut self) {
+        if let Some(index) = self.last_selected {
+            self.selected.select(Some(index));
+            self.last_selected = None;
+            return;
+        }
         self.selected.select_previous();
     }
 
+    fn select_none(&mut self) {
+        self.last_selected = self.selected.selected();
+        self.selected.select(None);
+    }
+
     fn toggle_completed(&mut self) {
-        let index = self.selected.selected().unwrap();
+        let index = match self.selected.selected() {
+            Some(index) => index,
+            None => return,
+        };
         let todo = self.todos.get(index).unwrap();
         let mut todos = self.todos.clone();
         todos[index] = Todo {
