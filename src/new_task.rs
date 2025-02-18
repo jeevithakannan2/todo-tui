@@ -54,6 +54,27 @@ impl Widgets<'_> {
         Self { title, description }
     }
 
+    pub fn from(title: Vec<String>, description: Vec<String>) -> Self {
+        let mut title = TextArea::new(title);
+        let mut description = TextArea::new(description);
+        title.set_cursor_line_style(Style::default());
+        description.set_cursor_line_style(Style::default());
+        title.set_block(
+            Block::bordered()
+                .border_type(BorderType::Rounded)
+                .title(" Title "),
+        );
+
+        description.set_block(
+            Block::bordered()
+                .border_type(BorderType::Rounded)
+                .title(" Description "),
+        );
+        title.set_cursor_line_style(Style::default());
+        description.set_cursor_line_style(Style::default());
+        Self { title, description }
+    }
+
     pub fn set_cursor_style(&mut self, mode: &Mode, focus: &Focus) {
         // cursor_style (title, description)
         let cursor_style = if *mode == Mode::Insert {
@@ -80,6 +101,19 @@ impl NewTask<'_> {
             completed: false,
             todo: Todo::new(),
             widgets: Widgets::new(),
+        }
+    }
+
+    pub fn from(todo: Todo) -> Self {
+        let description = todo.description.lines().map(|s| s.to_string()).collect();
+        let title = vec![todo.title];
+        Self {
+            focus: Focus::Title,
+            mode: Mode::Normal,
+            quit: false,
+            completed: false,
+            todo: Todo::from(Some(todo.id), None, None, None),
+            widgets: Widgets::from(title, description),
         }
     }
 
@@ -127,6 +161,7 @@ impl NewTask<'_> {
                         .collect::<Vec<&str>>()
                         .join("\n");
                     self.todo = Todo {
+                        id: self.todo.id,
                         title: title_val,
                         description: description_val,
                         completed: false,
@@ -184,12 +219,12 @@ impl NewTask<'_> {
 
     pub fn footer_text(&self) -> &str {
         match self.mode {
-            Mode::Normal => {
-                match self.focus {
-                    Focus::Description | Focus::Title => "[q] Quit without saving | [i] Insert Mode | [Enter] Save",
-                    Focus::ConfirmPropmt => "[y] Yes | [n] No",
+            Mode::Normal => match self.focus {
+                Focus::Description | Focus::Title => {
+                    "[q] Quit without saving | [i] Insert Mode | [Enter] Save"
                 }
-            }
+                Focus::ConfirmPropmt => "[y] Yes | [n] No",
+            },
             Mode::Insert => "[Esc] Normal Mode | [Tab] Switch Fields",
         }
     }

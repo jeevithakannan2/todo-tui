@@ -117,9 +117,9 @@ impl App<'_> {
                 .get(index.min(self.todos.len().saturating_sub(1)))
             {
                 Some(todo) => todo,
-                None => &Todo::new(),
+                None => &Todo::from(Some(0), Some("No task selected".to_string()), None, None),
             },
-            None => &Todo::new(),
+            None => &Todo::from(Some(0), Some("No task selected".to_string()), None, None),
         };
 
         // `preview_inner_block` is used to print the separation line between the list and the preview
@@ -132,7 +132,7 @@ impl App<'_> {
         frame.render_widget(description, preview_block.inner(preview_area));
 
         let footer_text = match self.focus {
-            AppFocus::TodoList => " [Up/Down] Navigate | [q] Quit | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ",
+            AppFocus::TodoList => " [Up/Down] Navigate | [q] Quit | [e] Edit Task | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ",
             AppFocus::NewTask => self.new_task.footer_text(),
             AppFocus::DeletePrompt => "[y] Yes | [n] No",
         };
@@ -183,8 +183,14 @@ impl App<'_> {
                     return true;
                 }
                 KeyCode::Char('d') => self.focus = AppFocus::DeletePrompt,
+                KeyCode::Char('e') => {
+                    if let Some(todo) = self.get_selected() {
+                        self.new_task = NewTask::from(todo);
+                        self.focus = AppFocus::NewTask;
+                    }
+                }
                 KeyCode::Char('n') => {
-                    self.new_task.completed = false;
+                    self.new_task = NewTask::new();
                     self.new_task.quit = false;
                     self.focus = AppFocus::NewTask;
                 }
@@ -195,7 +201,11 @@ impl App<'_> {
                 if self.new_task.quit {
                     if self.new_task.completed {
                         let todo = self.new_task.todo.clone();
-                        self.todos.push(todo);
+                        if let Some(index) = self.find_entry(todo.id) {
+                            self.todos[index] = todo;
+                        } else {
+                            self.todos.push(todo);
+                        }
                         save_todos(&self.todos).unwrap();
                         self.new_task = NewTask::new();
                     }
@@ -212,6 +222,10 @@ impl App<'_> {
             },
         }
         false
+    }
+
+    fn find_entry(&self, id: u128) -> Option<usize> {
+        self.todos.iter().position(|t| t.id == id)
     }
 
     fn get_selected(&self) -> Option<Todo> {

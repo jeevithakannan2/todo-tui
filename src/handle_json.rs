@@ -1,8 +1,10 @@
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 use std::{fs, io};
 
 #[derive(Serialize, Clone, PartialEq, Deserialize)]
 pub struct Todo {
+    pub id: u128,
     pub title: String,
     pub description: String,
     pub completed: bool,
@@ -11,9 +13,19 @@ pub struct Todo {
 impl Todo {
     pub fn new() -> Self {
         Self {
+            id: Uuid::now_v7().as_u128(),
             title: String::new(),
             description: String::new(),
             completed: false,
+        }
+    }
+
+    pub fn from(id: Option<u128>, title: Option<String>, description: Option<String>, completed: Option<bool>) -> Self {
+        Self {
+            id: id.unwrap_or_else(|| Uuid::now_v7().as_u128()),
+            title: title.unwrap_or_else(|| String::new()),
+            description: description.unwrap_or_else(|| String::new()),
+            completed: completed.unwrap_or_else(|| false),
         }
     }
 }
