@@ -117,17 +117,9 @@ impl App<'_> {
                 .get(index.min(self.todos.len().saturating_sub(1)))
             {
                 Some(todo) => todo,
-                None => &Todo {
-                    title: String::new(),
-                    description: "No tasks selected".to_string(),
-                    completed: false,
-                },
+                None => &Todo::new(),
             },
-            None => &Todo {
-                title: String::new(),
-                description: "No tasks selected".to_string(),
-                completed: false,
-            },
+            None => &Todo::new(),
         };
 
         // `preview_inner_block` is used to print the separation line between the list and the preview
@@ -139,11 +131,16 @@ impl App<'_> {
 
         frame.render_widget(description, preview_block.inner(preview_area));
 
-        let footer =
-            Paragraph::new(" [q] Quit | [n] New Task | [d] Delete Task | [v] Multi select | [Enter] Open Task | [Space] Toggle Task ")
-                .style(Style::default())
-                .alignment(Alignment::Center)
-                .block(Block::default());
+        let footer_text = match self.focus {
+            AppFocus::TodoList => " [Up/Down] Navigate | [q] Quit | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ",
+            AppFocus::NewTask => self.new_task.footer_text(),
+            AppFocus::DeletePrompt => "[y] Yes | [n] No",
+        };
+
+        let footer = Paragraph::new(footer_text)
+            .style(Style::default())
+            .alignment(Alignment::Center)
+            .block(Block::default());
 
         frame.render_widget(footer, footer_area);
 
@@ -223,6 +220,12 @@ impl App<'_> {
             .and_then(|index| self.todos.get(index).cloned())
     }
 
+    fn select_last_selected(&mut self) {
+        if let Some(index) = self.last_selected {
+            self.selected.select(Some(index));
+        }
+    }
+
     fn toggle_delete(&mut self) {
         if let Some(todo) = self.get_selected() {
             if self.selected_entries.contains(&todo) {
@@ -234,21 +237,12 @@ impl App<'_> {
     }
 
     fn select_next(&mut self) {
-        if let Some(index) = self.last_selected {
-            self.selected.select(Some(index));
-            self.last_selected = None;
-            return;
-        }
-
+        self.select_last_selected();
         self.selected.select_next();
     }
 
     fn select_previous(&mut self) {
-        if let Some(index) = self.last_selected {
-            self.selected.select(Some(index));
-            self.last_selected = None;
-            return;
-        }
+        self.select_last_selected();
         self.selected.select_previous();
     }
 
@@ -270,7 +264,6 @@ impl App<'_> {
             if let Some(index) = self.selected.selected() {
                 self.todos.remove(index);
             }
-            return;
         } else {
             for todo in self.selected_entries.iter() {
                 self.todos.retain(|t| t != todo);

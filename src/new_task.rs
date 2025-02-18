@@ -78,11 +78,7 @@ impl NewTask<'_> {
             mode: Mode::Normal,
             quit: false,
             completed: false,
-            todo: Todo {
-                title: String::new(),
-                description: String::new(),
-                completed: false,
-            },
+            todo: Todo::new(),
             widgets: Widgets::new(),
         }
     }
@@ -183,6 +179,18 @@ impl NewTask<'_> {
                     _ => {}
                 },
             },
+        }
+    }
+
+    pub fn footer_text(&self) -> &str {
+        match self.mode {
+            Mode::Normal => {
+                match self.focus {
+                    Focus::Description | Focus::Title => "[q] Quit without saving | [i] Insert Mode | [Enter] Save",
+                    Focus::ConfirmPropmt => "[y] Yes | [n] No",
+                }
+            }
+            Mode::Insert => "[Esc] Normal Mode | [Tab] Switch Fields",
         }
     }
 }

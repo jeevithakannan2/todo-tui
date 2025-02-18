@@ -8,6 +8,16 @@ pub struct Todo {
     pub completed: bool,
 }
 
+impl Todo {
+    pub fn new() -> Self {
+        Self {
+            title: String::new(),
+            description: String::new(),
+            completed: false,
+        }
+    }
+}
+
 pub fn load_todos() -> io::Result<Vec<Todo>> {
     let data = fs::read_to_string("todos.json").unwrap_or_else(|_| "[]".to_string());
     let todos: Vec<Todo> =
