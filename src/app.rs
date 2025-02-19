@@ -5,12 +5,10 @@ use crate::{
 use new_task::NewTask;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
-    layout::Flex,
     prelude::*,
     style::palette::tailwind::{GREEN, RED},
     widgets::{
-        Block, BorderType, Borders, Clear, HighlightSpacing, List, ListItem, ListState, Paragraph,
-        Wrap,
+        Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap,
     },
 };
 
@@ -39,6 +37,38 @@ enum AppFocus {
 }
 
 pub const SECONDARY_STYLE: Style = Style::new().fg(Color::Blue);
+pub const GREEN_STYLE: Style = Style::new().fg(GREEN.c500);
+pub const RED_STYLE: Style = Style::new().fg(RED.c500);
+
+impl Widget for &mut App<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let [main_area, footer_area] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(area);
+
+        let [list_area, preview_area] =
+            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .areas(main_area);
+
+        self.render_footer(footer_area, buf);
+        self.render_list(list_area, buf);
+        self.render_preview(preview_area, buf);
+
+        match self.focus {
+            AppFocus::TodoList => {}
+            AppFocus::NewTask => {
+                let new_task_area = crate::confirm::popup_area(main_area, 75, 75);
+                self.new_task.render(new_task_area, buf);
+            }
+            AppFocus::DeletePrompt => {
+                crate::confirm::Confirm::new(
+                    " Delete Task ".into(),
+                    "Are you sure you want to delete the selected task(s)?".into(),
+                )
+                .render(area, buf);
+            }
+        }
+    }
+}
 
 impl App<'_> {
     pub fn new() -> Self {
@@ -54,29 +84,26 @@ impl App<'_> {
         }
     }
 
-    pub fn draw(&mut self, frame: &mut Frame) {
-        let area = frame.area();
-
-        let [hero_area, footer_area] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(area);
-
-        let style = if self.focus != AppFocus::NewTask {
-            SECONDARY_STYLE
-        } else {
-            Style::default()
+    fn render_footer(&self, area: Rect, buf: &mut Buffer) {
+        let footer_text = match self.focus {
+            AppFocus::TodoList => " [ ] Navigate | [q] Quit | [e] Edit Task | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ",
+            AppFocus::NewTask => self.new_task.footer_text(),
+            AppFocus::DeletePrompt => "[y] Yes | [n] No",
         };
 
-        let [list_area, preview_area] =
-            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .areas(hero_area);
+        Paragraph::new(footer_text)
+            .alignment(Alignment::Center)
+            .render(area, buf);
+    }
 
-        let list_block = Block::bordered()
+    fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
+        let block = Block::bordered()
             .title(" Todo List ")
             .title_alignment(Alignment::Center)
-            .title_style(Style::default().reset().bold())
+            .title_style(Style::reset().bold())
             .borders(Borders::BOTTOM | Borders::TOP | Borders::LEFT)
             .border_type(BorderType::Rounded)
-            .border_style(style);
+            .border_style(SECONDARY_STYLE);
 
         let items: Vec<ListItem> = self
             .todos
@@ -84,31 +111,35 @@ impl App<'_> {
             .map(|todo| {
                 if self.selected_entries.contains(&todo) {
                     ListItem::new(format!("  {}", todo.title.as_str()))
-                        .style(Style::default().fg(RED.c500))
+                        .style(RED_STYLE)
                 } else if todo.completed {
-                    ListItem::new(format!("  {}", todo.title.as_str()))
-                        .style(Style::default().fg(GREEN.c500))
+                    ListItem::new(format!("  {}", todo.title.as_str()))
+                        .style(GREEN_STYLE)
                 } else {
-                    ListItem::new(format!("  {}", todo.title.as_str()))
+                    ListItem::new(format!("  {}", todo.title.as_str()))
                 }
             })
             .collect();
+
         let list = List::new(items)
+            .block(block)
             .highlight_symbol("")
-            .block(list_block)
             .highlight_spacing(HighlightSpacing::WhenSelected);
 
-        frame.render_stateful_widget(list, list_area, &mut self.selected);
+        StatefulWidget::render(list, area, buf, &mut self.selected);
+    }
 
-        let preview_block = Block::bordered()
+    fn render_preview(&self, area: Rect, buf: &mut Buffer) {
+        let block = Block::bordered()
             .title(" Preview ")
             .title_alignment(Alignment::Center)
-            .title_style(Style::default().reset().bold())
+            .title_style(Style::reset().bold())
             .borders(Borders::BOTTOM | Borders::TOP | Borders::RIGHT)
             .border_type(BorderType::Rounded)
-            .border_style(style);
+            .border_style(SECONDARY_STYLE);
 
-        frame.render_widget(&preview_block, preview_area);
+        let inner_area = block.inner(area);
+        block.render(area, buf);
 
         // Sometimes the ratatui list selection goes todos.len() + 1 so we need to clamp it
         let todo = match self.selected.selected() {
@@ -123,42 +154,15 @@ impl App<'_> {
         };
 
         // `preview_inner_block` is used to print the separation line between the list and the preview
-        let preview_inner_block = Block::bordered().borders(Borders::LEFT).border_style(style);
-        let description = Paragraph::new(todo.description.as_str())
+        let preview_inner_block = Block::bordered()
+            .borders(Borders::LEFT)
+            .border_style(SECONDARY_STYLE);
+        Paragraph::new(todo.description.as_str())
             .style(Style::reset())
             .block(preview_inner_block)
-            .wrap(Wrap { trim: true });
+            .wrap(Wrap { trim: true })
+            .render(inner_area, buf);
 
-        frame.render_widget(description, preview_block.inner(preview_area));
-
-        let footer_text = match self.focus {
-            AppFocus::TodoList => " [Up/Down] Navigate | [q] Quit | [e] Edit Task | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ",
-            AppFocus::NewTask => self.new_task.footer_text(),
-            AppFocus::DeletePrompt => "[y] Yes | [n] No",
-        };
-
-        let footer = Paragraph::new(footer_text)
-            .style(Style::default())
-            .alignment(Alignment::Center)
-            .block(Block::default());
-
-        frame.render_widget(footer, footer_area);
-
-        match self.focus {
-            AppFocus::NewTask => {
-                let new_task_area = popup_area(hero_area, 75, 75);
-                self.new_task.draw(frame, new_task_area);
-            }
-            AppFocus::DeletePrompt => {
-                confirm_prompt(
-                    frame,
-                    hero_area,
-                    " Delete Task ",
-                    "Are you sure you want to delete the selected task(s)?",
-                );
-            }
-            _ => {}
-        }
     }
 
     pub fn on_key(&mut self, key: KeyEvent) -> bool {
@@ -284,37 +288,4 @@ impl App<'_> {
             }
         }
     }
-}
-
-pub fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
-    let vertical = Layout::vertical([Constraint::Percentage(percent_y)]).flex(Flex::Center);
-    let horizontal = Layout::horizontal([Constraint::Percentage(percent_x)]).flex(Flex::Center);
-    let [area] = vertical.areas(area);
-    let [area] = horizontal.areas(area);
-    area
-}
-
-pub fn confirm_prompt(frame: &mut Frame, area: Rect, title: &str, description: &str) {
-    let popup_area = popup_area(area, 30, 25);
-    let block = Block::bordered()
-        .title(Line::from(title).bold().centered())
-        .border_type(BorderType::Rounded)
-        .border_style(SECONDARY_STYLE)
-        .title_bottom(vec![
-            " [ ".into(),
-            Span::styled("Y", Style::default().green().bold()),
-            " ] ".into(),
-        ])
-        .title_bottom(vec![
-            " [ ".into(),
-            Span::styled("N", Style::default().red().bold()),
-            " ] ".into(),
-        ])
-        .title_alignment(Alignment::Center)
-        .title_style(Style::default().reset());
-    let confirm = Paragraph::new(Line::from(description).centered())
-        .wrap(Wrap { trim: true })
-        .block(block);
-    frame.render_widget(Clear, popup_area);
-    frame.render_widget(confirm, popup_area);
 }

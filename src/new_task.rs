@@ -33,32 +33,49 @@ enum Mode {
     Insert,
 }
 
+impl Widget for &mut NewTask<'_> {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        NewTask::render_clear(area, buf);
+        self.render_border(area, buf);
+
+        let area = area.inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        });
+
+        let vertical = Layout::vertical([Constraint::Length(3), Constraint::Min(1)]);
+        let [title_area, description_area] = vertical.areas(area);
+
+        self.set_cursor_style();
+        self.widgets.title.render(title_area, buf);
+        self.widgets.description.render(description_area, buf);
+
+        if self.focus == Focus::ConfirmPropmt {
+            crate::confirm::Confirm::new(
+                " Confirm Save".into(),
+                "Do you want to save this task".into(),
+            )
+            .render(area, buf);
+        }
+    }
+}
+
 impl Widgets<'_> {
     pub fn new() -> Self {
         let mut title = TextArea::default();
         let mut description = TextArea::default();
-        // Removes the underline when typed
-        title.set_block(
-            Block::bordered()
-                .border_type(BorderType::Rounded)
-                .title(" Title "),
-        );
-
-        description.set_block(
-            Block::bordered()
-                .border_type(BorderType::Rounded)
-                .title(" Description "),
-        );
-        title.set_cursor_line_style(Style::default());
-        description.set_cursor_line_style(Style::default());
+        Widgets::set_block(&mut title, &mut description);
         Self { title, description }
     }
 
     pub fn from(title: Vec<String>, description: Vec<String>) -> Self {
         let mut title = TextArea::new(title);
         let mut description = TextArea::new(description);
-        title.set_cursor_line_style(Style::default());
-        description.set_cursor_line_style(Style::default());
+        Widgets::set_block(&mut title, &mut description);
+        Self { title, description }
+    }
+
+    fn set_block(title: &mut TextArea, description: &mut TextArea) {
         title.set_block(
             Block::bordered()
                 .border_type(BorderType::Rounded)
@@ -70,25 +87,13 @@ impl Widgets<'_> {
                 .border_type(BorderType::Rounded)
                 .title(" Description "),
         );
+
+        // Removes the underline when typed
         title.set_cursor_line_style(Style::default());
         description.set_cursor_line_style(Style::default());
-        Self { title, description }
-    }
 
-    pub fn set_cursor_style(&mut self, mode: &Mode, focus: &Focus) {
-        // cursor_style (title, description)
-        let cursor_style = if *mode == Mode::Insert {
-            match focus {
-                Focus::Title => (Style::default().reversed(), Style::default()),
-                Focus::Description => (Style::default(), Style::default().reversed()),
-                Focus::ConfirmPropmt => (Style::default(), Style::default()),
-            }
-        } else {
-            (Style::default(), Style::default())
-        };
-
-        self.title.set_cursor_style(cursor_style.0);
-        self.description.set_cursor_style(cursor_style.1);
+        title.set_placeholder_text("Enter your task title here");
+        description.set_placeholder_text("Enter your task description here");
     }
 }
 
@@ -117,34 +122,33 @@ impl NewTask<'_> {
         }
     }
 
-    pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
-        frame.render_widget(Clear, area);
+    fn render_clear(area: Rect, buf: &mut Buffer) {
+        Clear.render(area, buf);
+    }
 
-        let hero_block = Block::bordered()
+    fn set_cursor_style(&mut self) {
+        let cursor_style = if self.mode == Mode::Insert {
+            match self.focus {
+                Focus::Title => (Style::default().reversed(), Style::default()),
+                Focus::Description => (Style::default(), Style::default().reversed()),
+                Focus::ConfirmPropmt => (Style::default(), Style::default()),
+            }
+        } else {
+            (Style::default(), Style::default())
+        };
+
+        self.widgets.title.set_cursor_style(cursor_style.0);
+        self.widgets.description.set_cursor_style(cursor_style.1);
+    }
+
+    fn render_border(&self, area: Rect, buf: &mut Buffer) {
+        Block::bordered()
             .border_type(BorderType::Rounded)
             .title(" New Task ")
-            .title_style(Style::default().reset().bold())
+            .title_style(Style::reset().bold())
             .title_alignment(Alignment::Center)
-            .border_style(SECONDARY_STYLE);
-
-        frame.render_widget(&hero_block, area);
-        let area = hero_block.inner(area);
-        let vertical = Layout::vertical([Constraint::Length(3), Constraint::Min(1)]);
-        let [title_area, description_area] = vertical.areas(area);
-
-        self.widgets.set_cursor_style(&self.mode, &self.focus);
-
-        frame.render_widget(&self.widgets.title, title_area);
-        frame.render_widget(&self.widgets.description, description_area);
-
-        if self.focus == Focus::ConfirmPropmt {
-            crate::app::confirm_prompt(
-                frame,
-                area,
-                " Confirm Save ",
-                "Do you want to save this task",
-            );
-        }
+            .border_style(SECONDARY_STYLE)
+            .render(area, buf);
     }
 
     pub fn on_key(&mut self, key: KeyEvent) {
