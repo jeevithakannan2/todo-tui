@@ -151,7 +151,7 @@ impl NewTask<'_> {
             .render(area, buf);
     }
 
-    pub fn on_key(&mut self, key: KeyEvent) {
+    pub fn handle_key(&mut self, key: KeyEvent) {
         if self.focus == Focus::ConfirmPropmt {
             match key.code {
                 KeyCode::Char('y') => {

@@ -165,7 +165,7 @@ impl App<'_> {
 
     }
 
-    pub fn on_key(&mut self, key: KeyEvent) -> bool {
+    pub fn handle_key(&mut self, key: KeyEvent) -> bool {
         match self.focus {
             AppFocus::TodoList => match key.code {
                 KeyCode::Down => self.select_next(),
@@ -201,7 +201,7 @@ impl App<'_> {
                 _ => {}
             },
             AppFocus::NewTask => {
-                self.new_task.on_key(key);
+                self.new_task.handle_key(key);
                 if self.new_task.quit {
                     if self.new_task.completed {
                         let todo = self.new_task.todo.clone();
