@@ -1,4 +1,4 @@
-use crate::{app::SECONDARY_STYLE, handle_json::Todo};
+use crate::handle_json::Todo;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
@@ -35,7 +35,7 @@ enum Mode {
 
 impl Widget for &mut NewTask<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        NewTask::render_clear(area, buf);
+        Clear.render(area, buf);
         self.render_border(area, buf);
 
         let area = area.inner(Margin {
@@ -76,17 +76,15 @@ impl Widgets<'_> {
     }
 
     fn set_block(title: &mut TextArea, description: &mut TextArea) {
-        title.set_block(
+        // Helper function to create a bordered block
+        fn get_block(title: &str) -> Block {
             Block::bordered()
+                .title(title)
                 .border_type(BorderType::Rounded)
-                .title(" Title "),
-        );
+        }
 
-        description.set_block(
-            Block::bordered()
-                .border_type(BorderType::Rounded)
-                .title(" Description "),
-        );
+        title.set_block(get_block(" Title "));
+        description.set_block(get_block(" Description "));
 
         // Removes the underline when typed
         title.set_cursor_line_style(Style::default());
@@ -122,10 +120,6 @@ impl NewTask<'_> {
         }
     }
 
-    fn render_clear(area: Rect, buf: &mut Buffer) {
-        Clear.render(area, buf);
-    }
-
     fn set_cursor_style(&mut self) {
         let cursor_style = if self.mode == Mode::Insert {
             match self.focus {
@@ -142,13 +136,7 @@ impl NewTask<'_> {
     }
 
     fn render_border(&self, area: Rect, buf: &mut Buffer) {
-        Block::bordered()
-            .border_type(BorderType::Rounded)
-            .title(" New Task ")
-            .title_style(Style::reset().bold())
-            .title_alignment(Alignment::Center)
-            .border_style(SECONDARY_STYLE)
-            .render(area, buf);
+        crate::helpers::rounded_block(" New Task ").render(area, buf);
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {

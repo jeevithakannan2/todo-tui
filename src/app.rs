@@ -7,9 +7,7 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
     style::palette::tailwind::{GREEN, RED},
-    widgets::{
-        Block, BorderType, Borders, HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap,
-    },
+    widgets::{HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap},
 };
 
 pub struct App<'a> {
@@ -69,7 +67,7 @@ impl Widget for &mut App<'_> {
 
         match self.focus {
             AppFocus::NewTask => {
-                let new_task_area = crate::confirm::popup_area(main_area, 75, 75);
+                let new_task_area = crate::helpers::popup_area(main_area, 75, 75);
                 self.new_task.render(new_task_area, buf);
             }
             AppFocus::DeletePrompt => {
@@ -107,14 +105,7 @@ impl App<'_> {
     }
 
     fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
-        let block = Block::bordered()
-            .title(" Todo List ")
-            .title_alignment(Alignment::Center)
-            .title_style(Style::reset().bold())
-            .borders(Borders::BOTTOM | Borders::TOP | Borders::LEFT)
-            .border_type(BorderType::Rounded)
-            .border_style(SECONDARY_STYLE);
-
+        let block = crate::helpers::rounded_block(" Tasks ");
         let items: Vec<ListItem> = self
             .todos
             .iter()
@@ -138,16 +129,7 @@ impl App<'_> {
     }
 
     fn render_preview(&self, area: Rect, buf: &mut Buffer) {
-        let block = Block::bordered()
-            .title(" Preview ")
-            .title_alignment(Alignment::Center)
-            .title_style(Style::reset().bold())
-            .borders(Borders::BOTTOM | Borders::TOP | Borders::RIGHT)
-            .border_type(BorderType::Rounded)
-            .border_style(SECONDARY_STYLE);
-
-        let inner_area = block.inner(area);
-        block.render(area, buf);
+        let block = crate::helpers::rounded_block(" Preview ");
 
         // Sometimes the ratatui list selection goes todos.len() + 1 so we need to clamp it
         let todo = match self.selected.selected() {
@@ -161,15 +143,10 @@ impl App<'_> {
             None => &Todo::from(Some(0), Some("No task selected".to_string()), None, None),
         };
 
-        // `preview_inner_block` is used to print the separation line between the list and the preview
-        let preview_inner_block = Block::bordered()
-            .borders(Borders::LEFT)
-            .border_style(SECONDARY_STYLE);
         Paragraph::new(todo.description.as_str())
-            .style(Style::reset())
-            .block(preview_inner_block)
+            .block(block)
             .wrap(Wrap { trim: true })
-            .render(inner_area, buf);
+            .render(area, buf);
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
@@ -257,7 +234,7 @@ impl App<'_> {
             if self.selected_entries.contains(&todo) {
                 self.selected_entries.retain(|t| *t != todo);
             } else {
-                self.selected_entries.push(todo.clone());
+                self.selected_entries.push(todo);
             }
         }
     }

@@ -8,6 +8,7 @@ use std::io::Result;
 mod app;
 mod confirm;
 mod handle_json;
+mod helpers;
 mod new_task;
 
 fn main() -> Result<()> {
