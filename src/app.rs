@@ -17,6 +17,8 @@ pub struct App<'a> {
     focus: AppFocus,
     // The last selected index of the todo list before clearing the selection
     last_selected: Option<usize>,
+    // Enable preview mode
+    preview: bool,
     // Multi select mode
     multi_select: bool,
     // The state of the new task popup
@@ -45,16 +47,19 @@ impl Widget for &mut App<'_> {
         let [main_area, footer_area] =
             Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(area);
 
-        let [list_area, preview_area] =
+        let [list_area, preview_area] = if self.preview {
             Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .areas(main_area);
+                .areas(main_area)
+        } else {
+            Layout::horizontal([Constraint::Percentage(100), Constraint::Percentage(0)])
+                .areas(main_area)
+        };
 
         self.render_footer(footer_area, buf);
         self.render_list(list_area, buf);
         self.render_preview(preview_area, buf);
 
         match self.focus {
-            AppFocus::TodoList => {}
             AppFocus::NewTask => {
                 let new_task_area = crate::confirm::popup_area(main_area, 75, 75);
                 self.new_task.render(new_task_area, buf);
@@ -66,6 +71,7 @@ impl Widget for &mut App<'_> {
                 )
                 .render(area, buf);
             }
+            _ => {}
         }
     }
 }
@@ -76,6 +82,7 @@ impl App<'_> {
         Self {
             focus: AppFocus::TodoList,
             last_selected: None,
+            preview: false,
             multi_select: false,
             new_task: NewTask::new(),
             selected: ListState::default(),
@@ -86,7 +93,7 @@ impl App<'_> {
 
     fn render_footer(&self, area: Rect, buf: &mut Buffer) {
         let footer_text = match self.focus {
-            AppFocus::TodoList => " [ ] Navigate | [q] Quit | [e] Edit Task | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ",
+            AppFocus::TodoList => " [ ] Navigate | [q] Quit | [e] Edit Task | [p] Preview Tab | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ",
             AppFocus::NewTask => self.new_task.footer_text(),
             AppFocus::DeletePrompt => "[y] Yes | [n] No",
         };
@@ -110,11 +117,9 @@ impl App<'_> {
             .iter()
             .map(|todo| {
                 if self.selected_entries.contains(&todo) {
-                    ListItem::new(format!("  {}", todo.title.as_str()))
-                        .style(RED_STYLE)
+                    ListItem::new(format!("  {}", todo.title.as_str())).style(RED_STYLE)
                 } else if todo.completed {
-                    ListItem::new(format!("  {}", todo.title.as_str()))
-                        .style(GREEN_STYLE)
+                    ListItem::new(format!("  {}", todo.title.as_str())).style(GREEN_STYLE)
                 } else {
                     ListItem::new(format!("  {}", todo.title.as_str()))
                 }
@@ -162,7 +167,6 @@ impl App<'_> {
             .block(preview_inner_block)
             .wrap(Wrap { trim: true })
             .render(inner_area, buf);
-
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
@@ -198,6 +202,7 @@ impl App<'_> {
                     self.new_task.quit = false;
                     self.focus = AppFocus::NewTask;
                 }
+                KeyCode::Char('p') => self.preview = !self.preview,
                 _ => {}
             },
             AppFocus::NewTask => {
