@@ -44,8 +44,16 @@ pub const RED_STYLE: Style = Style::new().fg(RED.c500);
 
 impl Widget for &mut App<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        let footer_text: Line = match self.focus {
+            AppFocus::TodoList => " [ ] Navigate | [q] Quit | [e] Edit Task | [p] Preview Tab | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ".into(),
+            AppFocus::NewTask => self.new_task.footer_text().into(),
+            AppFocus::DeletePrompt => "[y] Yes | [n] No".into(),
+        };
+
+        let footer_height = (1 + footer_text.width().try_into().unwrap_or(0) / area.width).min(3);
+
         let [main_area, footer_area] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Length(1)]).areas(area);
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(footer_height)]).areas(area);
 
         let [list_area, preview_area] = if self.preview {
             Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
@@ -55,7 +63,7 @@ impl Widget for &mut App<'_> {
                 .areas(main_area)
         };
 
-        self.render_footer(footer_area, buf);
+        self.render_footer(footer_area, buf, footer_text);
         self.render_list(list_area, buf);
         self.render_preview(preview_area, buf);
 
@@ -91,15 +99,10 @@ impl App<'_> {
         }
     }
 
-    fn render_footer(&self, area: Rect, buf: &mut Buffer) {
-        let footer_text = match self.focus {
-            AppFocus::TodoList => " [ ] Navigate | [q] Quit | [e] Edit Task | [p] Preview Tab | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ",
-            AppFocus::NewTask => self.new_task.footer_text(),
-            AppFocus::DeletePrompt => "[y] Yes | [n] No",
-        };
-
-        Paragraph::new(footer_text)
+    fn render_footer(&self, area: Rect, buf: &mut Buffer, line: Line) {
+        Paragraph::new(line)
             .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true })
             .render(area, buf);
     }
 
