@@ -13,7 +13,7 @@ pub struct Confirm {
 impl Widget for &mut Confirm {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let popup_area = crate::helpers::popup_area(area, 30, 25);
-        Clear.render(area, buf);
+        Clear.render(popup_area, buf);
         self.render_prompt(popup_area, buf);
     }
 }
