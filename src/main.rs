@@ -11,6 +11,7 @@ mod handle_json;
 mod helpers;
 mod new_task;
 mod settings;
+mod theme;
 
 fn main() -> Result<()> {
     let mut terminal = ratatui::init();

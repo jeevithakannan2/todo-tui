@@ -3,6 +3,7 @@ use crate::{
     helpers::{create_popup_area, PopupSize},
     new_task,
     settings::{load_settings, save_settings, NewSettings, Settings},
+    theme::Theme,
 };
 use new_task::NewTask;
 use ratatui::{
@@ -29,6 +30,7 @@ pub struct App<'a> {
     selected_entries: Vec<Todo>,
     // New Settings
     new_settings: NewSettings<'a>,
+    theme: Theme,
     // Settings
     // settings: Settings,
     // The list of parsed todos from json
@@ -50,7 +52,15 @@ pub const RED_STYLE: Style = Style::new().fg(RED.c500);
 impl Widget for &mut App<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         let footer_text: Line = match self.focus {
-            AppFocus::TodoList => " [ ] Navigate | [q] Quit | [e] Edit Task | [p] Preview Tab | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ".into(),
+            AppFocus::TodoList => {
+                let arrows = if self.theme == Theme::Default {
+                    " "
+                } else {
+                    "Up/Down"
+                };
+                format!(" [{}] Navigate | [q] Quit | [e] Edit Task | [p] Preview Tab | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ", arrows).into()
+            }
+
             AppFocus::NewTask => self.new_task.footer_text().into(),
             AppFocus::DeletePrompt => "[y] Yes | [n] No".into(),
             AppFocus::Settings => self.new_settings.footer_text().into(),
@@ -107,6 +117,7 @@ impl App<'_> {
             preview: false,
             new_settings: NewSettings::from(&settings),
             // settings,
+            theme: Theme::Default,
             multi_select: false,
             new_task: NewTask::new(),
             selected: ListState::default(),
@@ -129,18 +140,32 @@ impl App<'_> {
             .iter()
             .map(|todo| {
                 if self.selected_entries.contains(&todo) {
-                    ListItem::new(format!("  {}", todo.title.as_str())).style(RED_STYLE)
+                    ListItem::new(format!(
+                        " {} {}",
+                        self.theme.get_delete(),
+                        todo.title.as_str()
+                    ))
+                    .style(RED_STYLE)
                 } else if todo.completed {
-                    ListItem::new(format!("  {}", todo.title.as_str())).style(GREEN_STYLE)
+                    ListItem::new(format!(
+                        " {} {} ",
+                        self.theme.get_completed(),
+                        todo.title.as_str()
+                    ))
+                    .style(GREEN_STYLE)
                 } else {
-                    ListItem::new(format!("  {}", todo.title.as_str()))
+                    ListItem::new(format!(
+                        " {} {}",
+                        self.theme.get_uncompleted(),
+                        todo.title.as_str()
+                    ))
                 }
             })
             .collect();
 
         let list = List::new(items)
             .block(block)
-            .highlight_symbol("")
+            .highlight_symbol(self.theme.get_hightlight_symbol())
             .highlight_spacing(HighlightSpacing::WhenSelected);
 
         StatefulWidget::render(list, area, buf, &mut self.selected);
@@ -179,6 +204,9 @@ impl App<'_> {
                     } else {
                         self.toggle_completed();
                     }
+                }
+                KeyCode::Char('t') => {
+                    self.theme = self.theme.change_theme();
                 }
                 KeyCode::Char('v') => {
                     self.multi_select = !self.multi_select;
