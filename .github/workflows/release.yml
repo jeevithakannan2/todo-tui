@@ -1,0 +1,54 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+        tag_name:
+          description: 'Tag name'
+          required: true
+        
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  todo_build:
+    runs-on: self-hosted
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set tag name ( Workflow Run )
+        if: github.event_name == 'push'
+        run: echo "tag_name=${{ github.ref_name }}" >> $GITHUB_ENV
+
+      - name: Set tag name ( Workflow Dispatch )
+        if: github.event_name == 'workflow_dispatch'
+        run: echo "tag_name=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
+        
+      - name: Build windows binary
+        run: cross build --release --target=x86_64-pc-windows-gnu
+    
+      - name: Build linux binary
+        run: cargo build --release
+
+      - name: Create and Upload Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.tag_name }}
+          name: ${{ env.tag_name }}
+          generate_release_notes: false
+          files: |
+            ./target/x86_64-pc-windows-gnu/release/todo-tui.exe
+            ./target/release/todo-tui
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
