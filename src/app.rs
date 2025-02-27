@@ -1,6 +1,8 @@
 use crate::{
     handle_json::{load_todos, save_todos, Todo},
     new_task,
+    // settings::{self, load_settings, save_settings, Mode, Settings, SettingsState},
+    settings::{load_settings, save_settings, NewSettings, Settings},
 };
 use new_task::NewTask;
 use ratatui::{
@@ -25,6 +27,10 @@ pub struct App<'a> {
     selected: ListState,
     // Selected entries
     selected_entries: Vec<Todo>,
+    // New Settings
+    new_settings: NewSettings<'a>,
+    // Settings
+    settings: Settings,
     // The list of parsed todos from json
     todos: Vec<Todo>,
 }
@@ -33,6 +39,7 @@ pub struct App<'a> {
 enum AppFocus {
     NewTask,
     TodoList,
+    Settings,
     DeletePrompt,
 }
 
@@ -46,6 +53,7 @@ impl Widget for &mut App<'_> {
             AppFocus::TodoList => " [ ] Navigate | [q] Quit | [e] Edit Task | [p] Preview Tab | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ".into(),
             AppFocus::NewTask => self.new_task.footer_text().into(),
             AppFocus::DeletePrompt => "[y] Yes | [n] No".into(),
+            AppFocus::Settings => self.new_settings.footer_text().into(),
         };
 
         let footer_height = (1 + footer_text.width().try_into().unwrap_or(0) / area.width).min(3);
@@ -77,6 +85,10 @@ impl Widget for &mut App<'_> {
                 )
                 .render(area, buf);
             }
+            AppFocus::Settings => {
+                let settings_area = crate::helpers::popup_area(main_area, 75, 20);
+                self.new_settings.render(settings_area, buf);
+            }
             _ => {}
         }
     }
@@ -85,10 +97,14 @@ impl Widget for &mut App<'_> {
 impl App<'_> {
     pub fn new() -> Self {
         let todos = load_todos().unwrap_or_else(|_| Vec::new());
+        let settings = load_settings().unwrap_or_else(|_| Settings::default());
+
         Self {
             focus: AppFocus::TodoList,
             last_selected: None,
             preview: false,
+            new_settings: NewSettings::from(&settings),
+            settings,
             multi_select: false,
             new_task: NewTask::new(),
             selected: ListState::default(),
@@ -183,6 +199,10 @@ impl App<'_> {
                     self.focus = AppFocus::NewTask;
                 }
                 KeyCode::Char('p') => self.preview = !self.preview,
+                KeyCode::Char('s') => {
+                    self.new_settings.quit = false;
+                    self.focus = AppFocus::Settings;
+                }
                 _ => {}
             },
             AppFocus::NewTask => {
@@ -209,6 +229,14 @@ impl App<'_> {
                 KeyCode::Char('n') => self.focus = AppFocus::TodoList,
                 _ => {}
             },
+            AppFocus::Settings => {
+                self.new_settings.handle_key(key);
+                if self.new_settings.quit {
+                    let settings = self.new_settings.to_settings();
+                    save_settings(&settings).unwrap();
+                    self.focus = AppFocus::TodoList;
+                }
+            }
         }
         false
     }

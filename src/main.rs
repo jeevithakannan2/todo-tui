@@ -10,6 +10,7 @@ mod confirm;
 mod handle_json;
 mod helpers;
 mod new_task;
+mod settings;
 
 fn main() -> Result<()> {
     let mut terminal = ratatui::init();
