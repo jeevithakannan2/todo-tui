@@ -101,7 +101,7 @@ impl Widget for &mut NewSettings<'_> {
             vertical: 1,
         });
 
-        let vertical = Layout::vertical([Constraint::Length(3), Constraint::Min(1)]);
+        let vertical = Layout::vertical([Constraint::Length(3), Constraint::Length(3)]);
         let [repo_area, branch_area] = vertical.areas(area);
 
         self.set_cursor_style();

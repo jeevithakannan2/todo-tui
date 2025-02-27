@@ -86,7 +86,7 @@ impl Widget for &mut App<'_> {
                 .render(area, buf);
             }
             AppFocus::Settings => {
-                let settings_area = crate::helpers::popup_area(main_area, 75, 20);
+                let settings_area = crate::helpers::popup_fixed_height(main_area, 75, 8);
                 self.new_settings.render(settings_area, buf);
             }
             _ => {}
