@@ -3,7 +3,10 @@ use ratatui::{
     widgets::{Clear, Paragraph, Widget, Wrap},
 };
 
-use crate::app::{GREEN_STYLE, RED_STYLE};
+use crate::{
+    app::{GREEN_STYLE, RED_STYLE},
+    helpers::{create_popup_area, PopupSize},
+};
 
 pub struct Confirm {
     pub title: String,
@@ -12,7 +15,7 @@ pub struct Confirm {
 
 impl Widget for &mut Confirm {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let popup_area = crate::helpers::popup_area(area, 30, 25);
+        let popup_area = create_popup_area(area, PopupSize::Percentage { x: 30, y: 25 });
         Clear.render(popup_area, buf);
         self.render_prompt(popup_area, buf);
     }

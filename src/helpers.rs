@@ -6,26 +6,40 @@ use ratatui::{
 
 use crate::app::SECONDARY_STYLE;
 
-pub fn popup_area(area: Rect, percent_x: u16, percent_y: u16) -> Rect {
-    let vertical = Layout::vertical([Constraint::Percentage(percent_y)]).flex(Flex::Center);
-    let horizontal = Layout::horizontal([Constraint::Percentage(percent_x)]).flex(Flex::Center);
-    let [area] = vertical.areas(area);
-    let [area] = horizontal.areas(area);
-    area
+#[allow(dead_code)]
+pub enum PopupSize {
+    Percentage { x: u16, y: u16 },
+    FixedHeight { x: u16, height: u16 },
+    FixedWidth { width: u16, y: u16 },
+    FixedBoth { width: u16, height: u16 },
 }
 
-// TODO: Still not perfect center
-pub fn popup_fixed_height(area: Rect, percent_x: u16, length_y: u16) -> Rect {
-    let vertical = Layout::vertical([
-        Constraint::Percentage(50),   // Centering the popup vertically
-        Constraint::Length(length_y), // Fixed height of 8
-        Constraint::Percentage(50),   // Remaining space
-    ])
-    .flex(Flex::Center);
+impl PopupSize {
+    fn constraints(&self) -> ([Constraint; 1], [Constraint; 1]) {
+        match *self {
+            PopupSize::Percentage { x, y } => {
+                ([Constraint::Percentage(x)], [Constraint::Percentage(y)])
+            }
+            PopupSize::FixedHeight { x, height } => {
+                ([Constraint::Percentage(x)], [Constraint::Length(height)])
+            }
+            PopupSize::FixedWidth { width, y } => {
+                ([Constraint::Length(width)], [Constraint::Percentage(y)])
+            }
+            PopupSize::FixedBoth { width, height } => {
+                ([Constraint::Length(width)], [Constraint::Length(height)])
+            }
+        }
+    }
+}
 
-    let horizontal = Layout::horizontal([Constraint::Percentage(percent_x)]).flex(Flex::Center);
+pub fn create_popup_area(area: Rect, size: PopupSize) -> Rect {
+    let (horizontal_constraints, vertical_constraints) = size.constraints();
 
-    let [_, area, _] = vertical.areas(area);
+    let vertical = Layout::vertical(vertical_constraints).flex(Flex::Center);
+    let horizontal = Layout::horizontal(horizontal_constraints).flex(Flex::Center);
+
+    let [area] = vertical.areas(area);
     let [area] = horizontal.areas(area);
 
     area

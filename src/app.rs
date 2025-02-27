@@ -1,7 +1,7 @@
 use crate::{
     handle_json::{load_todos, save_todos, Todo},
+    helpers::{create_popup_area, PopupSize},
     new_task,
-    // settings::{self, load_settings, save_settings, Mode, Settings, SettingsState},
     settings::{load_settings, save_settings, NewSettings, Settings},
 };
 use new_task::NewTask;
@@ -30,7 +30,7 @@ pub struct App<'a> {
     // New Settings
     new_settings: NewSettings<'a>,
     // Settings
-    settings: Settings,
+    // settings: Settings,
     // The list of parsed todos from json
     todos: Vec<Todo>,
 }
@@ -75,7 +75,8 @@ impl Widget for &mut App<'_> {
 
         match self.focus {
             AppFocus::NewTask => {
-                let new_task_area = crate::helpers::popup_area(main_area, 75, 75);
+                let new_task_area =
+                    create_popup_area(main_area, PopupSize::Percentage { x: 75, y: 75 });
                 self.new_task.render(new_task_area, buf);
             }
             AppFocus::DeletePrompt => {
@@ -86,7 +87,8 @@ impl Widget for &mut App<'_> {
                 .render(area, buf);
             }
             AppFocus::Settings => {
-                let settings_area = crate::helpers::popup_fixed_height(main_area, 75, 8);
+                let settings_area =
+                    create_popup_area(main_area, PopupSize::FixedHeight { x: 75, height: 8 });
                 self.new_settings.render(settings_area, buf);
             }
             _ => {}
@@ -104,7 +106,7 @@ impl App<'_> {
             last_selected: None,
             preview: false,
             new_settings: NewSettings::from(&settings),
-            settings,
+            // settings,
             multi_select: false,
             new_task: NewTask::new(),
             selected: ListState::default(),
