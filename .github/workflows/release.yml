@@ -32,6 +32,13 @@ jobs:
       - name: Set tag name ( Workflow Dispatch )
         if: github.event_name == 'workflow_dispatch'
         run: echo "tag_name=${{ github.event.inputs.tag_name }}" >> $GITHUB_ENV
+      
+      - name: Setup cross
+        run: |
+          rustup default stable
+          cargo install cross
+      - name: Add Cargo Bin to PATH
+        run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
         
       - name: Build windows binary
         run: cross build --release --target=x86_64-pc-windows-gnu
