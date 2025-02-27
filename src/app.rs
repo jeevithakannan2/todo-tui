@@ -282,7 +282,7 @@ impl App<'_> {
     }
 
     fn select_last_selected(&mut self) {
-        if let Some(index) = self.last_selected {
+        if let Some(index) = self.last_selected.take() {
             self.selected.select(Some(index));
         }
     }
