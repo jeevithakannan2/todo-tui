@@ -52,10 +52,11 @@ jobs:
         with:
           tag_name: ${{ env.tag_name }}
           name: ${{ env.tag_name }}
-          generate_release_notes: false
+          generate_release_notes: true
+          append_body: true
           files: |
             ./target/x86_64-pc-windows-gnu/release/todo-tui.exe
             ./target/release/todo-tui
-          prerelease: true
+          draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
