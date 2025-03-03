@@ -10,7 +10,7 @@ use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
     style::palette::tailwind::{GREEN, RED},
-    widgets::{HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{List, ListItem, ListState, Paragraph, Wrap},
 };
 use std::collections::BTreeMap;
 
@@ -46,6 +46,7 @@ enum AppFocus {
     DeletePrompt,
 }
 
+pub const PRIMARY_STYLE: Style = Style::new().fg(Color::Green);
 pub const SECONDARY_STYLE: Style = Style::new().fg(Color::Blue);
 pub const GREEN_STYLE: Style = Style::new().fg(GREEN.c500);
 pub const RED_STYLE: Style = Style::new().fg(RED.c500);
@@ -128,7 +129,11 @@ impl App<'_> {
     }
 
     fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
-        let block = crate::helpers::rounded_block(" Tasks ");
+        let style = match self.focus {
+            AppFocus::TodoList => PRIMARY_STYLE,
+            _ => SECONDARY_STYLE,
+        };
+        let block = crate::helpers::rounded_block(" Tasks ", style);
 
         let mut grouped_tasks: BTreeMap<NaiveDate, Vec<&Todo>> = BTreeMap::new();
         for todo in &self.todos {
@@ -148,7 +153,7 @@ impl App<'_> {
             } else if date == today.succ_opt().unwrap_or(today) {
                 "Tomorrow".to_string()
             } else {
-                format!("{} {}", date.format("%a"), date.format("%b %d %Y")) // Show day name with month and date
+                format!("{} {}", date.format("%a"), date.format("%b %d %Y")) // Show day name with month, date, year
             };
 
             // Add a date header (Non-selectable)
@@ -160,28 +165,13 @@ impl App<'_> {
             // Add tasks under the date
             for todo in tasks {
                 let index = items.len(); // Get current index before pushing task
-                let item = if self.selected_entries.contains(todo) {
-                    ListItem::new(format!(
-                        " {} {}",
-                        self.theme.get_delete(),
-                        todo.title.as_str()
-                    ))
-                    .style(RED_STYLE)
-                } else if todo.completed {
-                    ListItem::new(format!(
-                        " {} {}",
-                        self.theme.get_completed(),
-                        todo.title.as_str()
-                    ))
-                    .style(GREEN_STYLE)
+                let title = todo.title.as_str();
+                let (icon, style) = if todo.completed {
+                    (self.theme.get_completed(), Style::default().dark_gray())
                 } else {
-                    ListItem::new(format!(
-                        " {} {}",
-                        self.theme.get_uncompleted(),
-                        todo.title.as_str()
-                    ))
+                    (self.theme.get_uncompleted(), Style::default().bold())
                 };
-
+                let item = ListItem::new(format!(" {} {}", icon, title)).style(style);
                 self.selectable.push(index); // Track only tasks as selectable
                 items.push(item);
             }
@@ -189,17 +179,19 @@ impl App<'_> {
         }
 
         self.total = items.len();
-
         let list = List::new(items)
             .block(block)
-            .highlight_symbol(self.theme.get_hightlight_symbol())
-            .highlight_spacing(HighlightSpacing::WhenSelected);
+            .highlight_style(Style::default().fg(Color::Yellow));
 
         StatefulWidget::render(list, area, buf, &mut self.selected);
     }
 
     fn render_preview(&self, area: Rect, buf: &mut Buffer) {
-        let block = crate::helpers::rounded_block(" Preview ");
+        let style = match self.focus {
+            AppFocus::TodoList => SECONDARY_STYLE,
+            _ => PRIMARY_STYLE,
+        };
+        let block = crate::helpers::rounded_block(" Preview ", style);
 
         // Sometimes the ratatui list selection goes todos.len() + 1 so we need to clamp it
         let todo = match self.selected.selected() {
