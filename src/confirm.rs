@@ -4,7 +4,7 @@ use ratatui::{
 };
 
 use crate::{
-    app::{GREEN_STYLE, RED_STYLE},
+    app::{GREEN_STYLE, PRIMARY_STYLE, RED_STYLE},
     helpers::{create_popup_area, PopupSize},
 };
 
@@ -27,7 +27,7 @@ impl Confirm {
     }
 
     fn render_prompt(&self, area: Rect, buf: &mut Buffer) {
-        let block = crate::helpers::rounded_block(self.title.as_str())
+        let block = crate::helpers::rounded_block(self.title.as_str(), PRIMARY_STYLE)
             // Should separate into two title_bottom for a separation line in between text
             .title_bottom(vec![
                 " [ ".into(),

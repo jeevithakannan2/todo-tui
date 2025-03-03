@@ -4,8 +4,6 @@ use ratatui::{
     widgets::{Block, BorderType},
 };
 
-use crate::app::SECONDARY_STYLE;
-
 #[allow(dead_code)]
 pub enum PopupSize {
     Percentage { x: u16, y: u16 },
@@ -45,11 +43,11 @@ pub fn create_popup_area(area: Rect, size: PopupSize) -> Rect {
     area
 }
 
-pub fn rounded_block(title: &str) -> Block {
+pub fn rounded_block(title: &str, border_style: Style) -> Block {
     Block::bordered()
         .title(title)
         .title_alignment(Alignment::Center)
         .title_style(Style::reset().bold())
         .border_type(BorderType::Rounded)
-        .border_style(SECONDARY_STYLE)
+        .border_style(border_style)
 }

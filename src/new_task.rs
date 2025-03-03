@@ -1,4 +1,4 @@
-use crate::handle_json::Todo;
+use crate::{app::{PRIMARY_STYLE, SECONDARY_STYLE}, handle_json::Todo};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
@@ -159,7 +159,11 @@ impl NewTask<'_> {
     }
 
     fn render_border(&self, area: Rect, buf: &mut Buffer) {
-        crate::helpers::rounded_block(" New Task ").render(area, buf);
+        let style = match self.focus {
+            Focus::ConfirmPropmt => SECONDARY_STYLE,
+            _ => PRIMARY_STYLE,
+        };
+        crate::helpers::rounded_block(" New Task ", style).render(area, buf);
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
