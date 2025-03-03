@@ -7,6 +7,7 @@ use uuid::Uuid;
 pub struct Todo {
     pub id: u128,
     pub title: String,
+    pub date: String,
     pub description: String,
     pub completed: bool,
 }
@@ -16,6 +17,7 @@ impl Todo {
         Self {
             id: Uuid::now_v7().as_u128(),
             title: String::new(),
+            date: String::new(),
             description: String::new(),
             completed: false,
         }
@@ -24,12 +26,14 @@ impl Todo {
     pub fn from(
         id: Option<u128>,
         title: Option<String>,
+        date: Option<String>,
         description: Option<String>,
         completed: Option<bool>,
     ) -> Self {
         Self {
             id: id.unwrap_or_else(|| Uuid::now_v7().as_u128()),
             title: title.unwrap_or_else(|| String::new()),
+            date: date.unwrap_or_else(|| String::new()),
             description: description.unwrap_or_else(|| String::new()),
             completed: completed.unwrap_or_else(|| false),
         }
