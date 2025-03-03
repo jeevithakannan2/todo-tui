@@ -17,12 +17,14 @@ pub struct NewTask<'a> {
 
 struct Widgets<'a> {
     title: TextArea<'a>,
+    date: TextArea<'a>,
     description: TextArea<'a>,
 }
 
 #[derive(PartialEq)]
 enum Focus {
     Title,
+    Date,
     Description,
     ConfirmPropmt,
 }
@@ -43,11 +45,16 @@ impl Widget for &mut NewTask<'_> {
             vertical: 1,
         });
 
-        let vertical = Layout::vertical([Constraint::Length(3), Constraint::Min(1)]);
-        let [title_area, description_area] = vertical.areas(area);
+        let vertical = Layout::vertical([
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Min(1),
+        ]);
+        let [title_area, date_area, description_area] = vertical.areas(area);
 
         self.set_cursor_style();
         self.widgets.title.render(title_area, buf);
+        self.widgets.date.render(date_area, buf);
         self.widgets.description.render(description_area, buf);
 
         if self.focus == Focus::ConfirmPropmt {
@@ -64,18 +71,28 @@ impl Widgets<'_> {
     pub fn new() -> Self {
         let mut title = TextArea::default();
         let mut description = TextArea::default();
-        Widgets::set_block(&mut title, &mut description);
-        Self { title, description }
+        let mut date = TextArea::default();
+        Widgets::set_block(&mut title, &mut date, &mut description);
+        Self {
+            title,
+            date,
+            description,
+        }
     }
 
-    pub fn from(title: Vec<String>, description: Vec<String>) -> Self {
+    pub fn from(title: Vec<String>, date: Vec<String>, description: Vec<String>) -> Self {
         let mut title = TextArea::new(title);
+        let mut date = TextArea::new(date);
         let mut description = TextArea::new(description);
-        Widgets::set_block(&mut title, &mut description);
-        Self { title, description }
+        Widgets::set_block(&mut title, &mut date, &mut description);
+        Self {
+            title,
+            date,
+            description,
+        }
     }
 
-    fn set_block(title: &mut TextArea, description: &mut TextArea) {
+    fn set_block(title: &mut TextArea, date: &mut TextArea, description: &mut TextArea) {
         // Helper function to create a bordered block
         fn get_block(title: &str) -> Block {
             Block::bordered()
@@ -84,13 +101,16 @@ impl Widgets<'_> {
         }
 
         title.set_block(get_block(" Title "));
+        date.set_block(get_block(" Date "));
         description.set_block(get_block(" Description "));
 
         // Removes the underline when typed
         title.set_cursor_line_style(Style::default());
+        date.set_cursor_line_style(Style::default());
         description.set_cursor_line_style(Style::default());
 
         title.set_placeholder_text("Enter your task title here");
+        date.set_placeholder_text("Enter your task date here");
         description.set_placeholder_text("Enter your task description here");
     }
 }
@@ -109,30 +129,33 @@ impl NewTask<'_> {
 
     pub fn from(todo: Todo) -> Self {
         let description = todo.description.lines().map(|s| s.to_string()).collect();
+        let date = vec![todo.date];
         let title = vec![todo.title];
         Self {
             focus: Focus::Title,
             mode: Mode::Normal,
             quit: false,
             completed: false,
-            todo: Todo::from(Some(todo.id), None, None, None),
-            widgets: Widgets::from(title, description),
+            todo: Todo::from(Some(todo.id), None, None, None, None),
+            widgets: Widgets::from(title, date, description),
         }
     }
 
     fn set_cursor_style(&mut self) {
         let cursor_style = if self.mode == Mode::Insert {
             match self.focus {
-                Focus::Title => (Style::default().reversed(), Style::default()),
-                Focus::Description => (Style::default(), Style::default().reversed()),
-                Focus::ConfirmPropmt => (Style::default(), Style::default()),
+                Focus::Title => (Style::default().reversed(), Style::default(), Style::default()),
+                Focus::Date => (Style::default(), Style::default().reversed(), Style::default()),
+                Focus::Description => (Style::default(), Style::default(), Style::default().reversed()),
+                Focus::ConfirmPropmt => (Style::default(), Style::default(), Style::default()),
             }
         } else {
-            (Style::default(), Style::default())
+            (Style::default(), Style::default(), Style::default())
         };
 
         self.widgets.title.set_cursor_style(cursor_style.0);
-        self.widgets.description.set_cursor_style(cursor_style.1);
+        self.widgets.date.set_cursor_style(cursor_style.1);
+        self.widgets.description.set_cursor_style(cursor_style.2);
     }
 
     fn render_border(&self, area: Rect, buf: &mut Buffer) {
@@ -144,6 +167,7 @@ impl NewTask<'_> {
             match key.code {
                 KeyCode::Char('y') => {
                     let title_val = self.widgets.title.lines()[0].to_string();
+                    let date_val: String = self.widgets.date.lines()[0].to_string();
                     let description_val = self
                         .widgets
                         .description
@@ -155,6 +179,7 @@ impl NewTask<'_> {
                     self.todo = Todo {
                         id: self.todo.id,
                         title: title_val,
+                        date: date_val,
                         description: description_val,
                         completed: false,
                     };
@@ -188,7 +213,8 @@ impl NewTask<'_> {
                 KeyCode::Esc => self.mode = Mode::Normal,
                 KeyCode::Tab | KeyCode::BackTab => {
                     self.focus = match self.focus {
-                        Focus::Title => Focus::Description,
+                        Focus::Title => Focus::Date,
+                        Focus::Date => Focus::Description,
                         Focus::Description => Focus::Title,
                         Focus::ConfirmPropmt => Focus::ConfirmPropmt,
                     }
@@ -200,10 +226,13 @@ impl NewTask<'_> {
                         }
                         self.widgets.title.input(key);
                     }
+                    Focus::Date => {
+                        self.widgets.date.input(key);
+                    }
                     Focus::Description => {
                         self.widgets.description.input(key);
                     }
-                    _ => {}
+                    Focus::ConfirmPropmt => {}
                 },
             },
         }
@@ -212,7 +241,7 @@ impl NewTask<'_> {
     pub fn footer_text(&self) -> &str {
         match self.mode {
             Mode::Normal => match self.focus {
-                Focus::Description | Focus::Title => {
+                Focus::Description | Focus::Title | Focus::Date => {
                     "[q] Quit without saving | [i] Insert Mode | [Enter] Save"
                 }
                 Focus::ConfirmPropmt => "[y] Yes | [n] No",

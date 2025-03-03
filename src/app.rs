@@ -4,6 +4,7 @@ use crate::{
     new_task,
     theme::Theme,
 };
+use chrono::NaiveDate;
 use new_task::NewTask;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
@@ -11,6 +12,7 @@ use ratatui::{
     style::palette::tailwind::{GREEN, RED},
     widgets::{HighlightSpacing, List, ListItem, ListState, Paragraph, Wrap},
 };
+use std::collections::BTreeMap;
 
 pub struct App<'a> {
     // Used to determine which part of the app is currently in focus
@@ -31,6 +33,10 @@ pub struct App<'a> {
     theme: Theme,
     // The list of parsed todos from json
     todos: Vec<Todo>,
+    // Indexes of todos that can be selected ( This eliminates the date headers )
+    selectable: Vec<usize>,
+    // Total number of items in the list
+    total: usize,
 }
 
 #[derive(PartialEq)]
@@ -109,6 +115,8 @@ impl App<'_> {
             selected: ListState::default(),
             selected_entries: Vec::new(),
             todos,
+            selectable: Vec::new(),
+            total: 0,
         }
     }
 
@@ -121,11 +129,38 @@ impl App<'_> {
 
     fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
         let block = crate::helpers::rounded_block(" Tasks ");
-        let items: Vec<ListItem> = self
-            .todos
-            .iter()
-            .map(|todo| {
-                if self.selected_entries.contains(&todo) {
+
+        let mut grouped_tasks: BTreeMap<NaiveDate, Vec<&Todo>> = BTreeMap::new();
+        for todo in &self.todos {
+            let date = NaiveDate::parse_from_str(&todo.date, "%Y-%m-%d").unwrap();
+            grouped_tasks.entry(date).or_default().push(todo);
+        }
+
+        let mut items: Vec<ListItem> = Vec::new();
+        self.selectable.clear();
+
+        let today = chrono::Local::now().date_naive();
+
+        for (date, tasks) in grouped_tasks {
+            // Format the date header based on its relation to today
+            let date_header = if date == today {
+                "Today".to_string()
+            } else if date == today.succ_opt().unwrap_or(today) {
+                "Tomorrow".to_string()
+            } else {
+                format!("{} {}", date.format("%a"), date.format("%b %d %Y")) // Show day name with month and date
+            };
+
+            // Add a date header (Non-selectable)
+            items.push(
+                ListItem::new(format!(" {}", date_header))
+                    .style(Style::default().blue().add_modifier(Modifier::BOLD)),
+            );
+
+            // Add tasks under the date
+            for todo in tasks {
+                let index = items.len(); // Get current index before pushing task
+                let item = if self.selected_entries.contains(todo) {
                     ListItem::new(format!(
                         " {} {}",
                         self.theme.get_delete(),
@@ -134,7 +169,7 @@ impl App<'_> {
                     .style(RED_STYLE)
                 } else if todo.completed {
                     ListItem::new(format!(
-                        " {} {} ",
+                        " {} {}",
                         self.theme.get_completed(),
                         todo.title.as_str()
                     ))
@@ -145,9 +180,15 @@ impl App<'_> {
                         self.theme.get_uncompleted(),
                         todo.title.as_str()
                     ))
-                }
-            })
-            .collect();
+                };
+
+                self.selectable.push(index); // Track only tasks as selectable
+                items.push(item);
+            }
+            items.push(ListItem::new("")); // Adds a new line after each date group
+        }
+
+        self.total = items.len();
 
         let list = List::new(items)
             .block(block)
@@ -167,9 +208,21 @@ impl App<'_> {
                 .get(index.min(self.todos.len().saturating_sub(1)))
             {
                 Some(todo) => todo,
-                None => &Todo::from(Some(0), Some("No task selected".to_string()), None, None),
+                None => &Todo::from(
+                    Some(0),
+                    None,
+                    None,
+                    Some("No task selected".to_string()),
+                    None,
+                ),
             },
-            None => &Todo::from(Some(0), Some("No task selected".to_string()), None, None),
+            None => &Todo::from(
+                Some(0),
+                None,
+                None,
+                Some("No task selected".to_string()),
+                None,
+            ),
         };
 
         Paragraph::new(todo.description.as_str())
@@ -272,13 +325,43 @@ impl App<'_> {
     }
 
     fn select_next(&mut self) {
+        if self.selectable.is_empty() {
+            return;
+        }
         self.select_last_selected();
-        self.selected.select_next();
+        let index = match self.selected.selected() {
+            Some(index) => index,
+            None => 0,
+        };
+
+        let mut next = index + 1;
+        while !self.selectable.contains(&next) {
+            next += 1;
+            if next >= self.total {
+                next = self.selectable[0];
+            }
+        }
+        self.selected.select(Some(next));
     }
 
     fn select_previous(&mut self) {
         self.select_last_selected();
-        self.selected.select_previous();
+        if self.selectable.is_empty() {
+            return;
+        }
+        let index: usize = match self.selected.selected() {
+            Some(index) => index,
+            None => 0,
+        };
+
+        let mut next = index.saturating_sub(1);
+        while !self.selectable.contains(&next) {
+            next = next.saturating_sub(1);
+            if next == 0 {
+                next = self.selectable.last().copied().unwrap_or(0);
+            }
+        }
+        self.selected.select(Some(next));
     }
 
     fn select_none(&mut self) {
