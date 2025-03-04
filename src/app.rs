@@ -29,10 +29,8 @@ pub struct App<'a> {
     theme: Theme,
     // The list of parsed todos from json
     todos: Vec<Todo>,
-    // Preview scroll state
+    // Preview scroll state vertical and horizontal
     preview_scroll: (u16, u16),
-    preview_length: u16,
-    preview_height: u16,
     // Indexes of todos that can be selected ( This eliminates the date headers )
     selectable: Vec<(usize, u128)>,
     // Total number of items in the list
@@ -45,6 +43,11 @@ enum AppFocus {
     Preview,
     TodoList,
     DeletePrompt,
+}
+
+enum ScrollDirection {
+    Up,
+    Down,
 }
 
 pub const PRIMARY_STYLE: Style = Style::new().fg(Color::Green);
@@ -125,8 +128,6 @@ impl App<'_> {
             selected: ListState::default(),
             todos,
             preview_scroll: (0, 0),
-            preview_length: 0,
-            preview_height: 0,
             selectable: Vec::new(),
             total: 0,
         }
@@ -211,15 +212,23 @@ impl App<'_> {
             completed: false,
         };
         let todo = self.get_selected().unwrap_or(temp_todo);
-        let preview = todo.description.lines().count() as u16;
-        self.preview_length = preview;
-        self.preview_height = area.height;
-
-        Paragraph::new(todo.description.as_str())
+        let description = todo.description.as_str();
+        self.verify_preview_scroll(description.lines().count() as u16, area);
+        Paragraph::new(description)
             .block(block)
             .scroll(self.preview_scroll)
             .wrap(Wrap { trim: true })
             .render(area, buf)
+    }
+
+    // Verify that the preview scroll is within bounds
+    fn verify_preview_scroll(&mut self, preview_lines: u16, preview_area: Rect) {
+        let preview_area_height = preview_area.height.saturating_sub(2); // Upper and lower border 2px
+        self.preview_scroll.0 = if preview_lines < self.preview_scroll.0 + preview_area_height {
+            preview_lines.saturating_sub(preview_area_height)
+        } else {
+            self.preview_scroll.0
+        }
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
@@ -230,8 +239,8 @@ impl App<'_> {
                         self.focus = AppFocus::Preview;
                     }
                 }
-                KeyCode::Down => self.select_next(),
-                KeyCode::Up => self.select_previous(),
+                KeyCode::Down => self.scroll(ScrollDirection::Down),
+                KeyCode::Up => self.scroll(ScrollDirection::Up),
                 KeyCode::Esc => self.select_none(),
                 KeyCode::Char(' ') => self.toggle_completed(),
                 KeyCode::Char('t') => {
@@ -260,21 +269,7 @@ impl App<'_> {
                 self.new_task.handle_key(key);
                 if self.new_task.quit {
                     if self.new_task.completed {
-                        let todo = self.new_task.todo.clone();
-                        if let Some(index) = self.selected.selected() {
-                            if let Some((_, id)) = self.selectable.iter().find(|(i, _)| *i == index)
-                            {
-                                if let Some(existing_todo) =
-                                    self.todos.iter_mut().find(|t| t.id == *id)
-                                {
-                                    *existing_todo = todo;
-                                }
-                            }
-                        } else {
-                            self.todos.push(todo);
-                        }
-                        save_todos(&self.todos).unwrap();
-                        self.new_task = NewTask::new();
+                        self.add_or_modify_task();
                     }
                     self.focus = AppFocus::TodoList;
                 }
@@ -297,14 +292,23 @@ impl App<'_> {
         false
     }
 
+    fn add_or_modify_task(&mut self) {
+        let todo = self.new_task.todo.clone();
+        if let Some(current_todo) = self.get_selected_mut() {
+            *current_todo = todo;
+        } else {
+            self.todos.push(todo);
+        }
+        save_todos(&self.todos).unwrap();
+        self.new_task = NewTask::new();
+    }
+
     fn scroll_preview_up(&mut self) {
         self.preview_scroll.0 = self.preview_scroll.0.saturating_sub(1);
     }
 
     fn scroll_preview_down(&mut self) {
-        if self.preview_length - 1 > self.preview_scroll.0 + self.preview_height {
-            self.preview_scroll.0 += 1;
-        }
+        self.preview_scroll.0 += 1;
     }
 
     fn get_selected(&self) -> Option<Todo> {
@@ -328,7 +332,7 @@ impl App<'_> {
         }
     }
 
-    fn select_next(&mut self) {
+    fn scroll(&mut self, scroll_direction: ScrollDirection) {
         if self.selectable.is_empty() {
             return;
         }
@@ -337,34 +341,28 @@ impl App<'_> {
             Some(index) => index,
             None => 0,
         };
-
-        let mut next = index + 1;
-        while !self.selectable.iter().any(|&(i, _)| i == next) {
-            next += 1;
-            if next >= self.total {
-                next = self.selectable[0].0;
+        let mut next = index;
+        match scroll_direction {
+            ScrollDirection::Up => {
+                next = next.saturating_sub(1);
+                while !self.selectable.iter().any(|&(i, _)| i == next) {
+                    next = next.saturating_sub(1);
+                    if next <= 0 {
+                        next = self.selectable.last().copied().unwrap_or((0, 0)).0;
+                    }
+                }
+            }
+            ScrollDirection::Down => {
+                next += 1;
+                while !self.selectable.iter().any(|&(i, _)| i == next) {
+                    next += 1;
+                    if next >= self.total {
+                        next = self.selectable[0].0;
+                    }
+                }
             }
         }
-        self.selected.select(Some(next));
-    }
 
-    fn select_previous(&mut self) {
-        self.select_last_selected();
-        if self.selectable.is_empty() {
-            return;
-        }
-        let index: usize = match self.selected.selected() {
-            Some(index) => index,
-            None => 0,
-        };
-
-        let mut next = index.saturating_sub(1);
-        while !self.selectable.iter().any(|&(i, _)| i == next) {
-            next = next.saturating_sub(1);
-            if next == 0 {
-                next = self.selectable.last().copied().unwrap_or((0, 0)).0;
-            }
-        }
         self.selected.select(Some(next));
     }
 
