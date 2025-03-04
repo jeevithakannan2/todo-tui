@@ -12,13 +12,6 @@ impl Theme {
         }
     }
 
-    pub fn get_delete(&self) -> &str {
-        match self {
-            Theme::Default => "󰄰",
-            Theme::Compatible => "[-]",
-        }
-    }
-
     pub fn get_uncompleted(&self) -> &str {
         match self {
             Theme::Default => "󰄰",
