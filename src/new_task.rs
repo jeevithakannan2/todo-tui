@@ -1,4 +1,7 @@
-use crate::{app::{PRIMARY_STYLE, SECONDARY_STYLE}, handle_json::Todo};
+use crate::{
+    app::{PRIMARY_STYLE, SECONDARY_STYLE},
+    handle_json::Todo,
+};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
@@ -144,9 +147,21 @@ impl NewTask<'_> {
     fn set_cursor_style(&mut self) {
         let cursor_style = if self.mode == Mode::Insert {
             match self.focus {
-                Focus::Title => (Style::default().reversed(), Style::default(), Style::default()),
-                Focus::Date => (Style::default(), Style::default().reversed(), Style::default()),
-                Focus::Description => (Style::default(), Style::default(), Style::default().reversed()),
+                Focus::Title => (
+                    Style::default().reversed(),
+                    Style::default(),
+                    Style::default(),
+                ),
+                Focus::Date => (
+                    Style::default(),
+                    Style::default().reversed(),
+                    Style::default(),
+                ),
+                Focus::Description => (
+                    Style::default(),
+                    Style::default(),
+                    Style::default().reversed(),
+                ),
                 Focus::ConfirmPropmt => (Style::default(), Style::default(), Style::default()),
             }
         } else {

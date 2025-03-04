@@ -21,20 +21,18 @@ pub struct App<'a> {
     last_selected: Option<usize>,
     // Enable preview mode
     preview: bool,
-    // Multi select mode
-    multi_select: bool,
     // The state of the new task popup
     new_task: NewTask<'a>,
     // The state of the todo list
     selected: ListState,
-    // Selected entries
-    selected_entries: Vec<Todo>,
     // Selected theme
     theme: Theme,
     // The list of parsed todos from json
     todos: Vec<Todo>,
+    // Preview scroll state vertical and horizontal
+    preview_scroll: (u16, u16),
     // Indexes of todos that can be selected ( This eliminates the date headers )
-    selectable: Vec<usize>,
+    selectable: Vec<(usize, u128)>,
     // Total number of items in the list
     total: usize,
 }
@@ -42,8 +40,14 @@ pub struct App<'a> {
 #[derive(PartialEq)]
 enum AppFocus {
     NewTask,
+    Preview,
     TodoList,
     DeletePrompt,
+}
+
+enum ScrollDirection {
+    Up,
+    Down,
 }
 
 pub const PRIMARY_STYLE: Style = Style::new().fg(Color::Green);
@@ -60,11 +64,19 @@ impl Widget for &mut App<'_> {
                 } else {
                     "Up/Down"
                 };
-                format!(" [{}] Navigate | [q] Quit | [e] Edit Task | [p] Preview Tab | [n] New Task | [d] Delete Task | [v] Multi select | [Space] Toggle Task ", arrows).into()
+                format!(" [{}] Navigate | [q] Quit | [e] Edit Task | [p] Preview Tab | [n] New Task | [d] Delete Task | [Space] Toggle Task ", arrows).into()
             }
 
             AppFocus::NewTask => self.new_task.footer_text().into(),
             AppFocus::DeletePrompt => "[y] Yes | [n] No".into(),
+            AppFocus::Preview => {
+                let arrows = if self.theme == Theme::Default {
+                    " "
+                } else {
+                    "Up/Down"
+                };
+                format!(" [{}] Navigate", arrows).into()
+            }
         };
 
         let footer_height = (1 + footer_text.width().try_into().unwrap_or(0) / area.width).min(3);
@@ -97,6 +109,7 @@ impl Widget for &mut App<'_> {
                 )
                 .render(area, buf);
             }
+            AppFocus::Preview => {}
             AppFocus::TodoList => {}
         }
     }
@@ -111,11 +124,10 @@ impl App<'_> {
             last_selected: None,
             preview: false,
             theme: Theme::Default,
-            multi_select: false,
             new_task: NewTask::new(),
             selected: ListState::default(),
-            selected_entries: Vec::new(),
             todos,
+            preview_scroll: (0, 0),
             selectable: Vec::new(),
             total: 0,
         }
@@ -172,7 +184,7 @@ impl App<'_> {
                     (self.theme.get_uncompleted(), Style::default().bold())
                 };
                 let item = ListItem::new(format!(" {} {}", icon, title)).style(style);
-                self.selectable.push(index); // Track only tasks as selectable
+                self.selectable.push((index, todo.id)); // Track only tasks as selectable
                 items.push(item);
             }
             items.push(ListItem::new("")); // Adds a new line after each date group
@@ -186,62 +198,53 @@ impl App<'_> {
         StatefulWidget::render(list, area, buf, &mut self.selected);
     }
 
-    fn render_preview(&self, area: Rect, buf: &mut Buffer) {
+    fn render_preview(&mut self, area: Rect, buf: &mut Buffer) {
         let style = match self.focus {
             AppFocus::TodoList => SECONDARY_STYLE,
             _ => PRIMARY_STYLE,
         };
         let block = crate::helpers::rounded_block(" Preview ", style);
-
-        // Sometimes the ratatui list selection goes todos.len() + 1 so we need to clamp it
-        let todo = match self.selected.selected() {
-            Some(index) => match self
-                .todos
-                .get(index.min(self.todos.len().saturating_sub(1)))
-            {
-                Some(todo) => todo,
-                None => &Todo::from(
-                    Some(0),
-                    None,
-                    None,
-                    Some("No task selected".to_string()),
-                    None,
-                ),
-            },
-            None => &Todo::from(
-                Some(0),
-                None,
-                None,
-                Some("No task selected".to_string()),
-                None,
-            ),
+        let temp_todo = Todo {
+            id: 0,
+            title: String::new(),
+            date: String::new(),
+            description: String::from("No task selected"),
+            completed: false,
         };
-
-        Paragraph::new(todo.description.as_str())
+        let todo = self.get_selected().unwrap_or(temp_todo);
+        let description = todo.description.as_str();
+        self.verify_preview_scroll(description.lines().count() as u16, area);
+        Paragraph::new(description)
             .block(block)
+            .scroll(self.preview_scroll)
             .wrap(Wrap { trim: true })
-            .render(area, buf);
+            .render(area, buf)
+    }
+
+    // Verify that the preview scroll is within bounds
+    fn verify_preview_scroll(&mut self, preview_lines: u16, preview_area: Rect) {
+        let preview_area_height = preview_area.height.saturating_sub(2); // Upper and lower border 2px
+        self.preview_scroll.0 = if preview_lines < self.preview_scroll.0 + preview_area_height {
+            preview_lines.saturating_sub(preview_area_height)
+        } else {
+            self.preview_scroll.0
+        }
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
         match self.focus {
             AppFocus::TodoList => match key.code {
-                KeyCode::Down => self.select_next(),
-                KeyCode::Up => self.select_previous(),
-                KeyCode::Esc => self.select_none(),
-                KeyCode::Char(' ') => {
-                    if self.multi_select {
-                        self.toggle_delete();
-                    } else {
-                        self.toggle_completed();
+                KeyCode::BackTab | KeyCode::Tab => {
+                    if self.preview {
+                        self.focus = AppFocus::Preview;
                     }
                 }
+                KeyCode::Down => self.scroll(ScrollDirection::Down),
+                KeyCode::Up => self.scroll(ScrollDirection::Up),
+                KeyCode::Esc => self.select_none(),
+                KeyCode::Char(' ') => self.toggle_completed(),
                 KeyCode::Char('t') => {
                     self.theme = self.theme.change_theme();
-                }
-                KeyCode::Char('v') => {
-                    self.multi_select = !self.multi_select;
-                    self.selected_entries.clear();
                 }
                 KeyCode::Char('q') => {
                     save_todos(&self.todos).unwrap();
@@ -266,18 +269,17 @@ impl App<'_> {
                 self.new_task.handle_key(key);
                 if self.new_task.quit {
                     if self.new_task.completed {
-                        let todo = self.new_task.todo.clone();
-                        if let Some(index) = self.find_entry(todo.id) {
-                            self.todos[index] = todo;
-                        } else {
-                            self.todos.push(todo);
-                        }
-                        save_todos(&self.todos).unwrap();
-                        self.new_task = NewTask::new();
+                        self.add_or_modify_task();
                     }
                     self.focus = AppFocus::TodoList;
                 }
             }
+            AppFocus::Preview => match key.code {
+                KeyCode::BackTab | KeyCode::Tab => self.focus = AppFocus::TodoList,
+                KeyCode::Down => self.scroll_preview_down(),
+                KeyCode::Up => self.scroll_preview_up(),
+                _ => {}
+            },
             AppFocus::DeletePrompt => match key.code {
                 KeyCode::Char('y') => {
                     self.delete_entry();
@@ -290,14 +292,38 @@ impl App<'_> {
         false
     }
 
-    fn find_entry(&self, id: u128) -> Option<usize> {
-        self.todos.iter().position(|t| t.id == id)
+    fn add_or_modify_task(&mut self) {
+        let todo = self.new_task.todo.clone();
+        if let Some(current_todo) = self.get_selected_mut() {
+            *current_todo = todo;
+        } else {
+            self.todos.push(todo);
+        }
+        save_todos(&self.todos).unwrap();
+        self.new_task = NewTask::new();
+    }
+
+    fn scroll_preview_up(&mut self) {
+        self.preview_scroll.0 = self.preview_scroll.0.saturating_sub(1);
+    }
+
+    fn scroll_preview_down(&mut self) {
+        self.preview_scroll.0 += 1;
     }
 
     fn get_selected(&self) -> Option<Todo> {
         self.selected
             .selected()
-            .and_then(|index| self.todos.get(index).cloned())
+            .and_then(|index| self.selectable.iter().find(|(i, _)| *i == index))
+            .and_then(|(_, id)| self.todos.iter().find(|t| t.id == *id))
+            .cloned()
+    }
+
+    fn get_selected_mut(&mut self) -> Option<&mut Todo> {
+        self.selected
+            .selected()
+            .and_then(|index| self.selectable.iter().find(|(i, _)| *i == index))
+            .and_then(|(_, id)| self.todos.iter_mut().find(|t| t.id == *id))
     }
 
     fn select_last_selected(&mut self) {
@@ -306,17 +332,7 @@ impl App<'_> {
         }
     }
 
-    fn toggle_delete(&mut self) {
-        if let Some(todo) = self.get_selected() {
-            if self.selected_entries.contains(&todo) {
-                self.selected_entries.retain(|t| *t != todo);
-            } else {
-                self.selected_entries.push(todo);
-            }
-        }
-    }
-
-    fn select_next(&mut self) {
+    fn scroll(&mut self, scroll_direction: ScrollDirection) {
         if self.selectable.is_empty() {
             return;
         }
@@ -325,34 +341,28 @@ impl App<'_> {
             Some(index) => index,
             None => 0,
         };
-
-        let mut next = index + 1;
-        while !self.selectable.contains(&next) {
-            next += 1;
-            if next >= self.total {
-                next = self.selectable[0];
+        let mut next = index;
+        match scroll_direction {
+            ScrollDirection::Up => {
+                next = next.saturating_sub(1);
+                while !self.selectable.iter().any(|&(i, _)| i == next) {
+                    next = next.saturating_sub(1);
+                    if next <= 0 {
+                        next = self.selectable.last().copied().unwrap_or((0, 0)).0;
+                    }
+                }
+            }
+            ScrollDirection::Down => {
+                next += 1;
+                while !self.selectable.iter().any(|&(i, _)| i == next) {
+                    next += 1;
+                    if next >= self.total {
+                        next = self.selectable[0].0;
+                    }
+                }
             }
         }
-        self.selected.select(Some(next));
-    }
 
-    fn select_previous(&mut self) {
-        self.select_last_selected();
-        if self.selectable.is_empty() {
-            return;
-        }
-        let index: usize = match self.selected.selected() {
-            Some(index) => index,
-            None => 0,
-        };
-
-        let mut next = index.saturating_sub(1);
-        while !self.selectable.contains(&next) {
-            next = next.saturating_sub(1);
-            if next == 0 {
-                next = self.selectable.last().copied().unwrap_or(0);
-            }
-        }
         self.selected.select(Some(next));
     }
 
@@ -362,22 +372,14 @@ impl App<'_> {
     }
 
     fn toggle_completed(&mut self) {
-        if let Some(index) = self.selected.selected() {
-            if let Some(todo) = self.todos.get_mut(index) {
-                todo.completed = !todo.completed;
-            }
+        if let Some(todo) = self.get_selected_mut() {
+            todo.completed = !todo.completed;
         }
     }
 
     fn delete_entry(&mut self) {
-        if self.selected_entries.is_empty() {
-            if let Some(index) = self.selected.selected() {
-                self.todos.remove(index);
-            }
-        } else {
-            for todo in self.selected_entries.iter() {
-                self.todos.retain(|t| t != todo);
-            }
+        if let Some(todo) = self.get_selected() {
+            self.todos.retain(|t| t.id != todo.id);
         }
     }
 }
