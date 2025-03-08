@@ -1,7 +1,7 @@
 use app::App;
 use ratatui::{
-    crossterm::event::{self, Event, KeyEventKind},
     DefaultTerminal,
+    crossterm::event::{self, Event, KeyEventKind},
 };
 use std::io::Result;
 

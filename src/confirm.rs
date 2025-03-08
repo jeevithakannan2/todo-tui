@@ -5,7 +5,7 @@ use ratatui::{
 
 use crate::{
     app::{GREEN_STYLE, PRIMARY_STYLE, RED_STYLE},
-    helpers::{create_popup_area, PopupSize},
+    helpers::{PopupSize, create_popup_area},
 };
 
 pub struct Confirm {

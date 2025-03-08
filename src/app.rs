@@ -1,6 +1,6 @@
 use crate::{
     confirm,
-    handle_json::{load_tasks, save_tasks, Task},
+    handle_json::{Task, load_tasks, save_tasks},
     helpers::PopupSize,
     new_task,
     theme::Theme,
