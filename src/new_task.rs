@@ -1,38 +1,37 @@
-use crate::{
-    app::{PRIMARY_STYLE, SECONDARY_STYLE},
-    handle_json::Todo,
-};
+use crate::handle_json::Task;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
     widgets::{Block, BorderType, Clear},
 };
-use tui_textarea::TextArea;
+use tui_textarea::{CursorMove, TextArea};
 
+#[derive(Clone)]
 pub struct NewTask<'a> {
     focus: Focus,
     mode: Mode,
     widgets: Widgets<'a>,
-    pub todo: Todo,
+    task: Task,
+    save: Option<Box<NewTask<'a>>>,
     pub quit: bool,
     pub completed: bool,
 }
 
+#[derive(Clone)]
 struct Widgets<'a> {
     title: TextArea<'a>,
     date: TextArea<'a>,
     description: TextArea<'a>,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 enum Focus {
     Title,
     Date,
     Description,
-    ConfirmPropmt,
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Clone)]
 enum Mode {
     Normal,
     Insert,
@@ -41,12 +40,6 @@ enum Mode {
 impl Widget for &mut NewTask<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
         Clear.render(area, buf);
-        self.render_border(area, buf);
-
-        let area = area.inner(Margin {
-            horizontal: 1,
-            vertical: 1,
-        });
 
         let vertical = Layout::vertical([
             Constraint::Length(3),
@@ -59,14 +52,6 @@ impl Widget for &mut NewTask<'_> {
         self.widgets.title.render(title_area, buf);
         self.widgets.date.render(date_area, buf);
         self.widgets.description.render(description_area, buf);
-
-        if self.focus == Focus::ConfirmPropmt {
-            crate::confirm::Confirm::new(
-                " Confirm Save".into(),
-                "Do you want to save this task".into(),
-            )
-            .render(area, buf);
-        }
     }
 }
 
@@ -88,6 +73,9 @@ impl Widgets<'_> {
         let mut date = TextArea::new(date);
         let mut description = TextArea::new(description);
         Widgets::set_block(&mut title, &mut date, &mut description);
+        title.move_cursor(CursorMove::End);
+        date.move_cursor(CursorMove::End);
+        description.move_cursor(CursorMove::End);
         Self {
             title,
             date,
@@ -118,6 +106,24 @@ impl Widgets<'_> {
     }
 }
 
+impl Focus {
+    pub fn next(&self) -> Self {
+        match self {
+            Focus::Title => Focus::Date,
+            Focus::Date => Focus::Description,
+            Focus::Description => Focus::Title,
+        }
+    }
+
+    pub fn previous(&self) -> Self {
+        match self {
+            Focus::Title => Focus::Description,
+            Focus::Date => Focus::Title,
+            Focus::Description => Focus::Date,
+        }
+    }
+}
+
 impl NewTask<'_> {
     pub fn new() -> Self {
         Self {
@@ -125,96 +131,45 @@ impl NewTask<'_> {
             mode: Mode::Normal,
             quit: false,
             completed: false,
-            todo: Todo::new(),
+            task: Task::new(),
+            save: None,
             widgets: Widgets::new(),
         }
     }
 
-    pub fn from(todo: Todo) -> Self {
-        let description = todo.description.lines().map(|s| s.to_string()).collect();
-        let date = vec![todo.date];
-        let title = vec![todo.title];
+    pub fn from(task: Task) -> Self {
+        let description = task.description.lines().map(|s| s.to_string()).collect();
+        let date = vec![task.date];
+        let title = vec![task.title];
         Self {
             focus: Focus::Title,
             mode: Mode::Normal,
             quit: false,
             completed: false,
-            todo: Todo::from(Some(todo.id), None, None, None, None),
+            task: Task::from(Some(task.id), None, None, None, None),
+            save: None,
             widgets: Widgets::from(title, date, description),
         }
     }
 
     fn set_cursor_style(&mut self) {
-        let cursor_style = if self.mode == Mode::Insert {
+        let mut cursor_styles = (Style::default(), Style::default(), Style::default());
+        if self.mode == Mode::Insert {
             match self.focus {
-                Focus::Title => (
-                    Style::default().reversed(),
-                    Style::default(),
-                    Style::default(),
-                ),
-                Focus::Date => (
-                    Style::default(),
-                    Style::default().reversed(),
-                    Style::default(),
-                ),
-                Focus::Description => (
-                    Style::default(),
-                    Style::default(),
-                    Style::default().reversed(),
-                ),
-                Focus::ConfirmPropmt => (Style::default(), Style::default(), Style::default()),
+                Focus::Title => cursor_styles.0 = cursor_styles.0.reversed(),
+                Focus::Date => cursor_styles.1 = cursor_styles.1.reversed(),
+                Focus::Description => cursor_styles.2 = cursor_styles.2.reversed(),
             }
-        } else {
-            (Style::default(), Style::default(), Style::default())
-        };
-
-        self.widgets.title.set_cursor_style(cursor_style.0);
-        self.widgets.date.set_cursor_style(cursor_style.1);
-        self.widgets.description.set_cursor_style(cursor_style.2);
-    }
-
-    fn render_border(&self, area: Rect, buf: &mut Buffer) {
-        let style = match self.focus {
-            Focus::ConfirmPropmt => SECONDARY_STYLE,
-            _ => PRIMARY_STYLE,
-        };
-        crate::helpers::rounded_block(" New Task ", style).render(area, buf);
+        }
+        self.widgets.title.set_cursor_style(cursor_styles.0);
+        self.widgets.date.set_cursor_style(cursor_styles.1);
+        self.widgets.description.set_cursor_style(cursor_styles.2);
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
-        if self.focus == Focus::ConfirmPropmt {
-            match key.code {
-                KeyCode::Char('y') => {
-                    let title_val = self.widgets.title.lines()[0].to_string();
-                    let date_val: String = self.widgets.date.lines()[0].to_string();
-                    let description_val = self
-                        .widgets
-                        .description
-                        .lines()
-                        .iter()
-                        .map(|s| s.as_str())
-                        .collect::<Vec<&str>>()
-                        .join("\n");
-                    self.todo = Todo {
-                        id: self.todo.id,
-                        title: title_val,
-                        date: date_val,
-                        description: description_val,
-                        completed: false,
-                    };
-                    self.quit = true;
-                    self.completed = true;
-                }
-                KeyCode::Char('n') => self.focus = Focus::Title,
-                _ => {}
-            }
-            return;
-        }
-
         match self.mode {
             Mode::Normal => match key.code {
-                KeyCode::Char('q') => {
-                    self.focus = Focus::Title;
+                KeyCode::Tab => {
                     self.quit = true;
                 }
                 KeyCode::Char('i') => {
@@ -224,20 +179,25 @@ impl NewTask<'_> {
                 }
                 KeyCode::Enter => {
                     self.mode = Mode::Normal;
-                    self.focus = Focus::ConfirmPropmt;
+                    let title_val = self.widgets.title.lines()[0].to_string();
+                    let date_val: String = self.widgets.date.lines()[0].to_string();
+                    let description_val = self.widgets.description.lines().join("\n");
+                    self.task = Task {
+                        id: self.task.id,
+                        title: title_val,
+                        date: date_val,
+                        description: description_val,
+                        completed: false,
+                    };
+                    self.quit = true;
+                    self.completed = true;
                 }
                 _ => {}
             },
             Mode::Insert => match key.code {
                 KeyCode::Esc => self.mode = Mode::Normal,
-                KeyCode::Tab | KeyCode::BackTab => {
-                    self.focus = match self.focus {
-                        Focus::Title => Focus::Date,
-                        Focus::Date => Focus::Description,
-                        Focus::Description => Focus::Title,
-                        Focus::ConfirmPropmt => Focus::ConfirmPropmt,
-                    }
-                }
+                KeyCode::Tab => self.focus = self.focus.next(),
+                KeyCode::BackTab => self.focus = self.focus.previous(),
                 _ => match self.focus {
                     Focus::Title => {
                         if key.code == KeyCode::Enter {
@@ -246,26 +206,40 @@ impl NewTask<'_> {
                         self.widgets.title.input(key);
                     }
                     Focus::Date => {
+                        if key.code == KeyCode::Enter {
+                            return;
+                        }
                         self.widgets.date.input(key);
                     }
                     Focus::Description => {
                         self.widgets.description.input(key);
                     }
-                    Focus::ConfirmPropmt => {}
                 },
             },
         }
     }
 
-    pub fn footer_text(&self) -> &str {
-        match self.mode {
-            Mode::Normal => match self.focus {
-                Focus::Description | Focus::Title | Focus::Date => {
-                    "[q] Quit without saving | [i] Insert Mode | [Enter] Save"
-                }
-                Focus::ConfirmPropmt => "[y] Yes | [n] No",
-            },
-            Mode::Insert => "[Esc] Normal Mode | [Tab] Switch Fields",
+    pub fn get_task(&self) -> Task {
+        self.task.clone()
+    }
+
+    pub fn restore(&self) -> Self {
+        if let Some(save) = self.save.as_ref() {
+            save.as_ref().clone()
+        } else {
+            self.clone()
         }
+    }
+
+    pub fn save_state(&mut self) {
+        self.save = Some(Box::new(self.clone()));
+    }
+
+    pub fn footer_text(&self) -> Box<[&str]> {
+        let footer = match self.mode {
+            Mode::Normal => vec!["[Tab] Switch Fields", "[i] Insert Mode", "[Enter] Save"],
+            Mode::Insert => vec!["[Esc] Normal Mode", "[Tab] Switch Fields"],
+        };
+        footer.into_boxed_slice()
     }
 }

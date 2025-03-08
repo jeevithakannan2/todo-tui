@@ -1,6 +1,7 @@
 use crate::{
-    handle_json::{load_todos, save_todos, Todo},
-    helpers::{create_popup_area, PopupSize},
+    confirm,
+    handle_json::{load_tasks, save_tasks, Task},
+    helpers::PopupSize,
     new_task,
     theme::Theme,
 };
@@ -9,39 +10,52 @@ use new_task::NewTask;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
-    style::palette::tailwind::{GREEN, RED},
-    widgets::{List, ListItem, ListState, Paragraph, Wrap},
+    widgets::{Cell, Paragraph, Row, Table, TableState, Wrap},
 };
 use std::collections::BTreeMap;
 
 pub struct App<'a> {
-    // Used to determine which part of the app is currently in focus
-    focus: AppFocus,
-    // The last selected index of the todo list before clearing the selection
-    last_selected: Option<usize>,
-    // Enable preview mode
-    preview: bool,
-    // The state of the new task popup
-    new_task: NewTask<'a>,
-    // The state of the todo list
-    selected: ListState,
     // Selected theme
     theme: Theme,
-    // The list of parsed todos from json
-    todos: Vec<Todo>,
+    // State of the Tasks
+    tasks: Tasks,
+    // Display the new task or preview
+    right_area: RightArea,
+    // The state of the new task
+    new_task: NewTask<'a>,
+    // Used to determine which part of the app is currently in focus
+    focus: AppFocus,
+    // The last selected index of the task list before clearing the selection
+    last_selected: Option<TableState>,
+    // The state of the task list
+    current_selection: TableState,
+    // Total rows in the table
+    total: usize,
     // Preview scroll state vertical and horizontal
     preview_scroll: (u16, u16),
-    // Indexes of todos that can be selected ( This eliminates the date headers )
+}
+
+// State of the tasks
+struct Tasks {
+    // The list of parsed tasks from json
+    list: Vec<Task>,
+    // Grouped tasks by date ( saved in state to prevent the creation of a new map every render )
+    grouped: BTreeMap<NaiveDate, Vec<Task>>,
+    // Selectable indexes of tasks ( Excludes date headers ) Vec <(index, id)>
     selectable: Vec<(usize, u128)>,
-    // Total number of items in the list
-    total: usize,
+}
+
+#[derive(PartialEq)]
+enum RightArea {
+    Preview,
+    NewTask,
+    EditTask,
 }
 
 #[derive(PartialEq)]
 enum AppFocus {
-    NewTask,
-    Preview,
-    TodoList,
+    LeftArea,
+    RightArea,
     DeletePrompt,
 }
 
@@ -50,86 +64,69 @@ enum ScrollDirection {
     Down,
 }
 
-pub const PRIMARY_STYLE: Style = Style::new().fg(Color::Green);
-pub const SECONDARY_STYLE: Style = Style::new().fg(Color::Blue);
-pub const GREEN_STYLE: Style = Style::new().fg(GREEN.c500);
-pub const RED_STYLE: Style = Style::new().fg(RED.c500);
+pub const PRIMARY_STYLE: Style = Style::new().fg(Color::Rgb(166, 227, 161));
+pub const SECONDARY_STYLE: Style = Style::new().fg(Color::Rgb(137, 180, 250));
+pub const GREEN_STYLE: Style = Style::new().fg(Color::Rgb(0, 255, 0));
+pub const RED_STYLE: Style = Style::new().fg(Color::Rgb(255, 0, 0));
+pub const SELECTION_STYLE: Style = Style::new().fg(Color::Rgb(249, 226, 175));
 
 impl Widget for &mut App<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        let footer_text: Line = match self.focus {
-            AppFocus::TodoList => {
-                let arrows = if self.theme == Theme::Default {
-                    " "
-                } else {
-                    "Up/Down"
-                };
-                format!(" [{}] Navigate | [q] Quit | [e] Edit Task | [p] Preview Tab | [n] New Task | [d] Delete Task | [Space] Toggle Task ", arrows).into()
-            }
-
-            AppFocus::NewTask => self.new_task.footer_text().into(),
-            AppFocus::DeletePrompt => "[y] Yes | [n] No".into(),
-            AppFocus::Preview => {
-                let arrows = if self.theme == Theme::Default {
-                    " "
-                } else {
-                    "Up/Down"
-                };
-                format!(" [{}] Navigate", arrows).into()
-            }
-        };
-
+        let footer_text: Line = self.get_footer_text().into();
         let footer_height = (1 + footer_text.width().try_into().unwrap_or(0) / area.width).min(3);
 
         let [main_area, footer_area] =
             Layout::vertical([Constraint::Fill(1), Constraint::Length(footer_height)]).areas(area);
 
-        let [list_area, preview_area] = if self.preview {
-            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .areas(main_area)
-        } else {
-            Layout::horizontal([Constraint::Percentage(100), Constraint::Percentage(0)])
-                .areas(main_area)
-        };
-
         self.render_footer(footer_area, buf, footer_text);
-        self.render_list(list_area, buf);
-        self.render_preview(preview_area, buf);
 
-        match self.focus {
-            AppFocus::NewTask => {
-                let new_task_area =
-                    create_popup_area(main_area, PopupSize::Percentage { x: 75, y: 75 });
-                self.new_task.render(new_task_area, buf);
-            }
-            AppFocus::DeletePrompt => {
-                crate::confirm::Confirm::new(
-                    " Delete Task ".into(),
-                    "Are you sure you want to delete the selected task(s)?".into(),
-                )
-                .render(area, buf);
-            }
-            AppFocus::Preview => {}
-            AppFocus::TodoList => {}
+        let [left_area, right_area] =
+            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .areas(main_area);
+
+        self.render_list(left_area, buf);
+        self.render_right_border(right_area, buf);
+
+        let right_area = right_area.inner(Margin {
+            horizontal: 1,
+            vertical: 1,
+        });
+
+        if self.right_area == RightArea::Preview {
+            self.render_preview(right_area, buf);
+        } else {
+            self.new_task.render(right_area, buf);
+        }
+
+        if self.focus == AppFocus::DeletePrompt {
+            crate::confirm::Confirm::new(
+                " Delete Task ".into(),
+                "Delete the selected task?".into(),
+                PopupSize::Percentage { x: 20, y: 15 },
+            )
+            .render(main_area, buf);
         }
     }
 }
 
 impl App<'_> {
     pub fn new() -> Self {
-        let todos = load_todos().unwrap_or_else(|_| Vec::new());
-
+        let tasks = load_tasks().unwrap_or_else(|_| Vec::new());
+        let group = Self::group_date_tasks(&tasks);
         Self {
-            focus: AppFocus::TodoList,
+            focus: AppFocus::LeftArea,
             last_selected: None,
-            preview: false,
-            theme: Theme::Default,
-            new_task: NewTask::new(),
-            selected: ListState::default(),
-            todos,
+            current_selection: TableState::default(),
+            total: group.2,
             preview_scroll: (0, 0),
-            selectable: Vec::new(),
-            total: 0,
+            theme: Theme::Default,
+            tasks: Tasks {
+                list: tasks,
+                grouped: group.1,
+                selectable: group.0,
+            },
+            new_task: NewTask::new(),
+            right_area: RightArea::NewTask,
         }
     }
 
@@ -140,82 +137,108 @@ impl App<'_> {
             .render(area, buf);
     }
 
-    fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
-        let style = match self.focus {
-            AppFocus::TodoList => PRIMARY_STYLE,
-            _ => SECONDARY_STYLE,
+    fn get_border_style(&self, focus: AppFocus) -> Style {
+        if self.focus == focus {
+            PRIMARY_STYLE
+        } else {
+            SECONDARY_STYLE
+        }
+    }
+
+    fn render_right_border(&self, area: Rect, buf: &mut Buffer) {
+        let style = self.get_border_style(AppFocus::RightArea);
+
+        let title = match self.right_area {
+            RightArea::Preview => " Preview ",
+            RightArea::NewTask => " New Task ",
+            RightArea::EditTask => " Edit Task ",
         };
+
+        let block = crate::helpers::rounded_block(title, style);
+        block.render(area, buf);
+    }
+
+    fn group_date_tasks(
+        tasks: &[Task],
+    ) -> (Vec<(usize, u128)>, BTreeMap<NaiveDate, Vec<Task>>, usize) {
+        let mut grouped_tasks: BTreeMap<NaiveDate, Vec<Task>> = BTreeMap::new();
+        for task in tasks {
+            let date = NaiveDate::parse_from_str(&task.date, "%Y-%m-%d").unwrap();
+            grouped_tasks.entry(date).or_default().push(task.clone());
+        }
+        let mut selectable: Vec<(usize, u128)> = Vec::new();
+        let mut idx = 0;
+        for (_, tasks) in &grouped_tasks {
+            idx += 1;
+            for task in tasks {
+                selectable.push((idx, task.id));
+                idx += 1;
+            }
+        }
+        (selectable, grouped_tasks, idx)
+    }
+
+    fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
+        let style = self.get_border_style(AppFocus::LeftArea);
         let block = crate::helpers::rounded_block(" Tasks ", style);
 
-        let mut grouped_tasks: BTreeMap<NaiveDate, Vec<&Todo>> = BTreeMap::new();
-        for todo in &self.todos {
-            let date = NaiveDate::parse_from_str(&todo.date, "%Y-%m-%d").unwrap();
-            grouped_tasks.entry(date).or_default().push(todo);
-        }
-
-        let mut items: Vec<ListItem> = Vec::new();
-        self.selectable.clear();
-
+        let mut rows: Vec<Row> = Vec::with_capacity(self.total);
         let today = chrono::Local::now().date_naive();
 
-        for (date, tasks) in grouped_tasks {
+        for (date, tasks) in &self.tasks.grouped {
             // Format the date header based on its relation to today
-            let date_header = if date == today {
+            let date_header = if *date == today {
                 "Today".to_string()
-            } else if date == today.succ_opt().unwrap_or(today) {
+            } else if *date == today.succ_opt().unwrap_or(today) {
                 "Tomorrow".to_string()
             } else {
-                format!("{} {}", date.format("%a"), date.format("%b %d %Y")) // Show day name with month, date, year
+                format!("{} {}", date.format("%a"), date.format("%b %d %Y"))
             };
 
-            // Add a date header (Non-selectable)
-            items.push(
-                ListItem::new(format!(" {}", date_header))
-                    .style(Style::default().blue().add_modifier(Modifier::BOLD)),
-            );
+            // Add a date header row (Non-selectable)
+            let header_row = Row::new(vec![Cell::from(date_header).style(SECONDARY_STYLE.bold())]);
 
+            rows.push(header_row);
             // Add tasks under the date
-            for todo in tasks {
-                let index = items.len(); // Get current index before pushing task
-                let title = todo.title.as_str();
-                let (icon, style) = if todo.completed {
+            for (i, task) in tasks.iter().enumerate() {
+                let title = task.title.as_str();
+                let (icon, style) = if task.completed {
                     (self.theme.get_completed(), Style::default().dark_gray())
                 } else {
                     (self.theme.get_uncompleted(), Style::default().bold())
                 };
-                let item = ListItem::new(format!(" {} {}", icon, title)).style(style);
-                self.selectable.push((index, todo.id)); // Track only tasks as selectable
-                items.push(item);
+
+                let mut task_row =
+                    Row::new(vec![Cell::from(format!("{} {}", icon, title)).style(style)]);
+
+                // Last task of the date add a extra line to separate the next date
+                if i == tasks.len() - 1 {
+                    task_row = task_row.bottom_margin(1);
+                }
+
+                rows.push(task_row);
             }
-            items.push(ListItem::new("")); // Adds a new line after each date group
         }
 
-        self.total = items.len();
-        let list = List::new(items)
+        let table = Table::new(rows, &[Constraint::Length(100)])
             .block(block)
-            .highlight_style(Style::default().fg(Color::Yellow));
+            .row_highlight_style(SELECTION_STYLE);
 
-        StatefulWidget::render(list, area, buf, &mut self.selected);
+        StatefulWidget::render(table, area, buf, &mut self.current_selection);
     }
 
     fn render_preview(&mut self, area: Rect, buf: &mut Buffer) {
-        let style = match self.focus {
-            AppFocus::TodoList => SECONDARY_STYLE,
-            _ => PRIMARY_STYLE,
-        };
-        let block = crate::helpers::rounded_block(" Preview ", style);
-        let temp_todo = Todo {
+        let temp_task = Task {
             id: 0,
             title: String::new(),
             date: String::new(),
             description: String::from("No task selected"),
             completed: false,
         };
-        let todo = self.get_selected().unwrap_or(temp_todo);
-        let description = todo.description.as_str();
+        let task = self.get_selected().unwrap_or(temp_task);
+        let description = task.description.as_str();
         self.verify_preview_scroll(description.lines().count() as u16, area);
         Paragraph::new(description)
-            .block(block)
             .scroll(self.preview_scroll)
             .wrap(Wrap { trim: true })
             .render(area, buf)
@@ -232,60 +255,72 @@ impl App<'_> {
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) -> bool {
+        if matches!(self.focus, AppFocus::LeftArea | AppFocus::RightArea) {
+            if key.code == KeyCode::Char('q') {
+                return true;
+            }
+        }
         match self.focus {
-            AppFocus::TodoList => match key.code {
+            AppFocus::LeftArea => match key.code {
                 KeyCode::BackTab | KeyCode::Tab => {
-                    if self.preview {
-                        self.focus = AppFocus::Preview;
+                    self.focus = AppFocus::RightArea;
+                    if self.right_area != RightArea::Preview {
+                        self.new_task.quit = false;
                     }
                 }
                 KeyCode::Down => self.scroll(ScrollDirection::Down),
                 KeyCode::Up => self.scroll(ScrollDirection::Up),
                 KeyCode::Esc => self.select_none(),
                 KeyCode::Char(' ') => self.toggle_completed(),
-                KeyCode::Char('t') => {
-                    self.theme = self.theme.change_theme();
-                }
-                KeyCode::Char('q') => {
-                    save_todos(&self.todos).unwrap();
-                    return true;
-                }
-                KeyCode::Char('d') => self.focus = AppFocus::DeletePrompt,
-                KeyCode::Char('e') => {
-                    if let Some(todo) = self.get_selected() {
-                        self.new_task = NewTask::from(todo);
-                        self.focus = AppFocus::NewTask;
+                KeyCode::Char('t') => self.theme = self.theme.change_theme(),
+                KeyCode::Char('d') => {
+                    if let Some(_) = self.get_selected() {
+                        self.focus = AppFocus::DeletePrompt
                     }
                 }
-                KeyCode::Char('n') => {
-                    self.new_task = NewTask::new();
-                    self.new_task.quit = false;
-                    self.focus = AppFocus::NewTask;
+                KeyCode::Char('e') => {
+                    if let Some(task) = self.get_selected() {
+                        self.new_task = NewTask::from(task);
+                        self.focus = AppFocus::RightArea;
+                        self.right_area = RightArea::EditTask;
+                    }
                 }
-                KeyCode::Char('p') => self.preview = !self.preview,
+                KeyCode::Char('p') => self.right_area = RightArea::Preview,
+                KeyCode::Char('n') => {
+                    self.new_task = self.new_task.restore();
+                    self.new_task.quit = false;
+                    self.focus = AppFocus::RightArea;
+                    self.right_area = RightArea::NewTask;
+                    self.select_none();
+                }
                 _ => {}
             },
-            AppFocus::NewTask => {
-                self.new_task.handle_key(key);
-                if self.new_task.quit {
-                    if self.new_task.completed {
-                        self.add_or_modify_task();
+            AppFocus::RightArea => {
+                if self.right_area != RightArea::Preview {
+                    self.new_task.handle_key(key);
+                    if self.new_task.quit {
+                        if self.new_task.completed {
+                            self.add_or_modify_task();
+                            self.right_area = RightArea::Preview;
+                        }
+                        self.focus = AppFocus::LeftArea;
+                        self.new_task = NewTask::new();
                     }
-                    self.focus = AppFocus::TodoList;
+                } else {
+                    match key.code {
+                        KeyCode::BackTab | KeyCode::Tab => self.focus = AppFocus::LeftArea,
+                        KeyCode::Down => self.scroll_preview_down(),
+                        KeyCode::Up => self.scroll_preview_up(),
+                        _ => {}
+                    }
                 }
             }
-            AppFocus::Preview => match key.code {
-                KeyCode::BackTab | KeyCode::Tab => self.focus = AppFocus::TodoList,
-                KeyCode::Down => self.scroll_preview_down(),
-                KeyCode::Up => self.scroll_preview_up(),
-                _ => {}
-            },
             AppFocus::DeletePrompt => match key.code {
                 KeyCode::Char('y') => {
                     self.delete_entry();
-                    self.focus = AppFocus::TodoList;
+                    self.focus = AppFocus::LeftArea;
                 }
-                KeyCode::Char('n') => self.focus = AppFocus::TodoList,
+                KeyCode::Char('n') => self.focus = AppFocus::LeftArea,
                 _ => {}
             },
         }
@@ -293,14 +328,15 @@ impl App<'_> {
     }
 
     fn add_or_modify_task(&mut self) {
-        let todo = self.new_task.todo.clone();
-        if let Some(current_todo) = self.get_selected_mut() {
-            *current_todo = todo;
+        let task = self.new_task.get_task();
+        if self.right_area == RightArea::EditTask {
+            if let Some(selected_task) = self.get_selected_mut() {
+                *selected_task = task;
+            }
         } else {
-            self.todos.push(todo);
+            self.tasks.list.push(task);
         }
-        save_todos(&self.todos).unwrap();
-        self.new_task = NewTask::new();
+        self.update_task_list();
     }
 
     fn scroll_preview_up(&mut self) {
@@ -311,33 +347,37 @@ impl App<'_> {
         self.preview_scroll.0 += 1;
     }
 
-    fn get_selected(&self) -> Option<Todo> {
-        self.selected
+    fn get_selected(&self) -> Option<Task> {
+        self.current_selection
             .selected()
-            .and_then(|index| self.selectable.iter().find(|(i, _)| *i == index))
-            .and_then(|(_, id)| self.todos.iter().find(|t| t.id == *id))
+            .and_then(|index| self.tasks.selectable.iter().find(|(i, _)| *i == index))
+            .and_then(|(_, id)| self.tasks.list.iter().find(|t| t.id == *id))
             .cloned()
     }
 
-    fn get_selected_mut(&mut self) -> Option<&mut Todo> {
-        self.selected
+    fn get_selected_mut(&mut self) -> Option<&mut Task> {
+        self.current_selection
             .selected()
-            .and_then(|index| self.selectable.iter().find(|(i, _)| *i == index))
-            .and_then(|(_, id)| self.todos.iter_mut().find(|t| t.id == *id))
+            .and_then(|index| self.tasks.selectable.iter().find(|(i, _)| *i == index))
+            .and_then(|(_, id)| self.tasks.list.iter_mut().find(|t| t.id == *id))
     }
 
-    fn select_last_selected(&mut self) {
-        if let Some(index) = self.last_selected.take() {
-            self.selected.select(Some(index));
+    fn select_last_selected(&mut self) -> bool {
+        if let Some(old_selection) = self.last_selected.take() {
+            self.current_selection = old_selection;
+            return true;
         }
+        false
     }
 
     fn scroll(&mut self, scroll_direction: ScrollDirection) {
-        if self.selectable.is_empty() {
+        if self.tasks.selectable.is_empty() {
             return;
         }
-        self.select_last_selected();
-        let index = match self.selected.selected() {
+        if self.select_last_selected() {
+            return;
+        }
+        let index = match self.current_selection.selected() {
             Some(index) => index,
             None => 0,
         };
@@ -345,41 +385,108 @@ impl App<'_> {
         match scroll_direction {
             ScrollDirection::Up => {
                 next = next.saturating_sub(1);
-                while !self.selectable.iter().any(|&(i, _)| i == next) {
+                while !self.tasks.selectable.iter().any(|&(i, _)| i == next) {
                     next = next.saturating_sub(1);
                     if next <= 0 {
-                        next = self.selectable.last().copied().unwrap_or((0, 0)).0;
+                        next = self.tasks.selectable.last().copied().unwrap_or((0, 0)).0;
                     }
                 }
             }
             ScrollDirection::Down => {
                 next += 1;
-                while !self.selectable.iter().any(|&(i, _)| i == next) {
+                while !self.tasks.selectable.iter().any(|&(i, _)| i == next) {
                     next += 1;
                     if next >= self.total {
-                        next = self.selectable[0].0;
+                        next = self.tasks.selectable[0].0;
                     }
                 }
             }
         }
 
-        self.selected.select(Some(next));
+        self.current_selection.select(Some(next));
+        if self.current_selection.selected().is_none() {
+            self.right_area = RightArea::NewTask
+        } else if self.right_area != RightArea::EditTask {
+            self.right_area = RightArea::Preview
+        }
+        if self.right_area == RightArea::EditTask {
+            self.new_task = NewTask::from(self.get_selected().unwrap());
+        }
     }
 
     fn select_none(&mut self) {
-        self.last_selected = self.selected.selected();
-        self.selected.select(None);
+        self.last_selected = Some(self.current_selection.clone());
+        self.current_selection.select(None);
+    }
+
+    fn update_task_list(&mut self) {
+        let grouped_tasks = Self::group_date_tasks(&self.tasks.list);
+        self.tasks.selectable = grouped_tasks.0;
+        self.tasks.grouped = grouped_tasks.1;
+        self.total = grouped_tasks.2;
+        save_tasks(&self.tasks.list).unwrap();
     }
 
     fn toggle_completed(&mut self) {
-        if let Some(todo) = self.get_selected_mut() {
-            todo.completed = !todo.completed;
+        if let Some(task) = self.get_selected_mut() {
+            task.completed = !task.completed;
+            self.update_task_list();
         }
     }
 
     fn delete_entry(&mut self) {
-        if let Some(todo) = self.get_selected() {
-            self.todos.retain(|t| t.id != todo.id);
+        if let Some(task) = self.get_selected() {
+            self.tasks.list.retain(|t| t.id != task.id);
+            self.update_task_list();
+            if let Some(_) = self.current_selection.selected() {
+                self.scroll(ScrollDirection::Down);
+            }
         }
+    }
+
+    fn get_footer_text(&self) -> String {
+        let arrows = if self.theme == Theme::Default {
+            "[ ] Navigate"
+        } else {
+            "[Up/Down] Navigate"
+        };
+
+        let mut footer_text = Vec::new();
+        match self.focus {
+            AppFocus::LeftArea => {
+                footer_text.push(arrows);
+                if self.current_selection.selected().is_some() {
+                    footer_text.extend_from_slice(&[
+                        "[e] Edit Task",
+                        "[d] Delete Task",
+                        "[Space] Toggle Completed",
+                    ]);
+                }
+                footer_text.push("[n] New Task");
+                footer_text.push("[t] Compatibility Mode");
+                if self.right_area != RightArea::Preview
+                    && self.current_selection.selected().is_some()
+                {
+                    footer_text.push("[p] Preview");
+                }
+                let title = match self.right_area {
+                    RightArea::EditTask => "[Tab] Focus Edit Task",
+                    RightArea::NewTask => "[Tab] Focus New Task",
+                    RightArea::Preview => "[Tab] Focus Preview",
+                };
+                footer_text.push(title);
+                footer_text.push("[q] Quit");
+            }
+            AppFocus::RightArea => {
+                if self.right_area != RightArea::Preview {
+                    footer_text = self.new_task.footer_text().to_vec();
+                } else {
+                    footer_text.extend_from_slice(&[arrows, "[Tab] Focus Tasks", "[q] Quit"]);
+                }
+            }
+            AppFocus::DeletePrompt => footer_text = confirm::get_footer_text(),
+        }
+
+        footer_text.join(" | ")
     }
 }
