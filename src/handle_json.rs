@@ -1,7 +1,6 @@
 use directories::ProjectDirs;
 use serde::{Deserialize, Serialize};
 use std::{fs, io};
-use uuid::Uuid;
 
 #[derive(Serialize, Clone, PartialEq, Deserialize)]
 pub struct Task {
@@ -15,7 +14,7 @@ pub struct Task {
 impl Task {
     pub fn new() -> Self {
         Self {
-            id: Uuid::now_v7().as_u128(),
+            id: get_id(),
             title: String::new(),
             date: String::new(),
             description: String::new(),
@@ -23,21 +22,19 @@ impl Task {
         }
     }
 
-    pub fn from(
-        id: Option<u128>,
-        title: Option<String>,
-        date: Option<String>,
-        description: Option<String>,
-        completed: Option<bool>,
-    ) -> Self {
+    pub fn from(id: u128) -> Self {
         Self {
-            id: id.unwrap_or_else(|| Uuid::now_v7().as_u128()),
-            title: title.unwrap_or_else(|| String::new()),
-            date: date.unwrap_or_else(|| String::new()),
-            description: description.unwrap_or_else(|| String::new()),
-            completed: completed.unwrap_or_else(|| false),
+            id,
+            title: String::new(),
+            date: String::new(),
+            description: String::new(),
+            completed: false,
         }
     }
+}
+
+fn get_id() -> u128 {
+    load_tasks().unwrap().len() as u128
 }
 
 pub fn load_tasks() -> io::Result<Vec<Task>> {

@@ -146,7 +146,7 @@ impl NewTask<'_> {
             mode: Mode::Normal,
             quit: false,
             completed: false,
-            task: Task::from(Some(task.id), None, None, None, None),
+            task: Task::from(task.id),
             save: None,
             widgets: Widgets::from(title, date, description),
         }
