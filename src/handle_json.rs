@@ -4,7 +4,7 @@ use std::{fs, io};
 use uuid::Uuid;
 
 #[derive(Serialize, Clone, PartialEq, Deserialize)]
-pub struct Todo {
+pub struct Task {
     pub id: u128,
     pub title: String,
     pub date: String,
@@ -12,7 +12,7 @@ pub struct Todo {
     pub completed: bool,
 }
 
-impl Todo {
+impl Task {
     pub fn new() -> Self {
         Self {
             id: Uuid::now_v7().as_u128(),
@@ -40,22 +40,22 @@ impl Todo {
     }
 }
 
-pub fn load_todos() -> io::Result<Vec<Todo>> {
+pub fn load_tasks() -> io::Result<Vec<Task>> {
     let dir = ProjectDirs::from("com", "CodeTrenchers", "TodoTUI").unwrap();
-    let data = fs::read_to_string(format!("{}/todos.json", dir.data_dir().to_str().unwrap()))
+    let data = fs::read_to_string(format!("{}/tasks.json", dir.data_dir().to_str().unwrap()))
         .unwrap_or_else(|_| "[]".to_string());
-    let todos: Vec<Todo> =
+    let tasks: Vec<Task> =
         serde_json::from_str(&data).map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
-    Ok(todos)
+    Ok(tasks)
 }
 
-pub fn save_todos(todos: &[Todo]) -> io::Result<()> {
+pub fn save_tasks(tasks: &[Task]) -> io::Result<()> {
     let dir = ProjectDirs::from("com", "CodeTrenchers", "TodoTUI").unwrap();
     fs::DirBuilder::new()
         .recursive(true)
         .create(dir.data_dir())
         .unwrap();
-    let path = format!("{}/todos.json", dir.data_dir().to_str().unwrap());
-    let data = serde_json::to_string(todos)?;
+    let path = format!("{}/tasks.json", dir.data_dir().to_str().unwrap());
+    let data = serde_json::to_string(tasks)?;
     fs::write(path, data)
 }
