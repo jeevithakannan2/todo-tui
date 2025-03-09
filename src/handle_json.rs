@@ -4,7 +4,7 @@ use std::{fs, io};
 
 #[derive(Serialize, Clone, PartialEq, Deserialize)]
 pub struct Task {
-    pub id: u128,
+    pub id: u16,
     pub title: String,
     pub date: String,
     pub description: String,
@@ -22,7 +22,7 @@ impl Task {
         }
     }
 
-    pub fn from(id: u128) -> Self {
+    pub fn from(id: u16) -> Self {
         Self {
             id,
             title: String::new(),
@@ -33,8 +33,8 @@ impl Task {
     }
 }
 
-fn get_id() -> u128 {
-    load_tasks().unwrap().len() as u128
+fn get_id() -> u16 {
+    load_tasks().unwrap().len() as u16
 }
 
 pub fn load_tasks() -> io::Result<Vec<Task>> {

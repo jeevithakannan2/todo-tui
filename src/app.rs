@@ -42,7 +42,7 @@ struct Tasks {
     // Grouped tasks by date ( saved in state to prevent the creation of a new map every render )
     grouped: BTreeMap<NaiveDate, Vec<Task>>,
     // Selectable indexes of tasks ( Excludes date headers ) Vec <(index, id)>
-    selectable: Vec<(usize, u128)>,
+    selectable: Vec<(usize, u16)>,
 }
 
 #[derive(PartialEq)]
@@ -72,6 +72,12 @@ pub const SELECTION_STYLE: Style = Style::new().fg(Color::Rgb(249, 226, 175));
 
 impl Widget for &mut App<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        if self.current_selection.selected().is_none() {
+            self.right_area = RightArea::NewTask
+        } else if self.right_area != RightArea::EditTask {
+            self.right_area = RightArea::Preview
+        }
+
         let footer_text: Line = self.get_footer_text().into();
         let footer_height = (1 + footer_text.width().try_into().unwrap_or(0) / area.width).min(3);
 
@@ -160,13 +166,13 @@ impl App<'_> {
 
     fn group_date_tasks(
         tasks: &[Task],
-    ) -> (Vec<(usize, u128)>, BTreeMap<NaiveDate, Vec<Task>>, usize) {
+    ) -> (Vec<(usize, u16)>, BTreeMap<NaiveDate, Vec<Task>>, usize) {
         let mut grouped_tasks: BTreeMap<NaiveDate, Vec<Task>> = BTreeMap::new();
         for task in tasks {
             let date = NaiveDate::parse_from_str(&task.date, "%Y-%m-%d").unwrap();
             grouped_tasks.entry(date).or_default().push(task.clone());
         }
-        let mut selectable: Vec<(usize, u128)> = Vec::new();
+        let mut selectable: Vec<(usize, u16)> = Vec::new();
         let mut idx = 0;
         for (_, tasks) in &grouped_tasks {
             idx += 1;
@@ -220,7 +226,7 @@ impl App<'_> {
             }
         }
 
-        let table = Table::new(rows, &[Constraint::Length(100)])
+        let table = Table::new(rows, &[Constraint::Fill(1)])
             .block(block)
             .row_highlight_style(SELECTION_STYLE);
 
@@ -302,9 +308,10 @@ impl App<'_> {
                         if self.new_task.completed {
                             self.add_or_modify_task();
                             self.right_area = RightArea::Preview;
+                            self.new_task = NewTask::new();
                         }
                         self.focus = AppFocus::LeftArea;
-                        self.new_task = NewTask::new();
+                        self.scroll(ScrollDirection::Down);
                     }
                 } else {
                     match key.code {
@@ -404,11 +411,7 @@ impl App<'_> {
         }
 
         self.current_selection.select(Some(next));
-        if self.current_selection.selected().is_none() {
-            self.right_area = RightArea::NewTask
-        } else if self.right_area != RightArea::EditTask {
-            self.right_area = RightArea::Preview
-        }
+
         if self.right_area == RightArea::EditTask {
             self.new_task = NewTask::from(self.get_selected().unwrap());
         }
