@@ -37,6 +37,7 @@ jobs:
         run: |
           rustup default stable
           cargo install cross
+
       - name: Add Cargo Bin to PATH
         run: echo "$HOME/.cargo/bin" >> $GITHUB_PATH
         
@@ -44,7 +45,7 @@ jobs:
         run: cross build --release --target=x86_64-pc-windows-gnu
     
       - name: Build linux binary
-        run: cargo build --release
+        run: cross build --release --target=x86_64-unknown-linux-musl
 
       - name: Create and Upload Release
         id: create_release
@@ -56,7 +57,7 @@ jobs:
           append_body: true
           files: |
             ./target/x86_64-pc-windows-gnu/release/todo-tui.exe
-            ./target/release/todo-tui
+            ./target/x86_64-unknown-linux-musl/release/todo-tui
           draft: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
