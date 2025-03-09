@@ -1,7 +1,6 @@
 use crate::{
-    confirm,
     handle_json::{Task, load_tasks, save_tasks},
-    helpers::PopupSize,
+    helpers::{PopupSize, rounded_block},
     new_task,
     theme::Theme,
 };
@@ -13,6 +12,7 @@ use ratatui::{
     widgets::{Cell, Paragraph, Row, Table, TableState, Wrap},
 };
 use std::collections::BTreeMap;
+use tui_textarea::TextArea;
 
 pub struct App<'a> {
     // Selected theme
@@ -35,11 +35,13 @@ pub struct App<'a> {
     total: usize,
     // Preview scroll state vertical and horizontal
     preview_scroll: (u16, u16),
+    // Search text area state
+    search: TextArea<'a>,
 }
 
 // State of the tasks
 struct Tasks {
-    // The list of parsed tasks from json
+    // The list of tasks in json
     list: Vec<Task>,
     // Grouped tasks by date ( saved in state to prevent the creation of a new map every render )
     grouped: BTreeMap<NaiveDate, Vec<Task>>,
@@ -59,6 +61,7 @@ enum AppFocus {
     LeftArea,
     RightArea,
     DeletePrompt,
+    Search,
 }
 
 enum ScrollDirection {
@@ -91,8 +94,11 @@ impl Widget for &mut App<'_> {
         let [left_area, right_area] =
             Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .areas(main_area);
+        let [search_area, list_area] =
+            Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).areas(left_area);
 
-        self.render_list(left_area, buf);
+        self.render_search(search_area, buf, self.get_border_style(AppFocus::Search));
+        self.render_list(list_area, buf);
         self.render_right_border(right_area, buf);
 
         let right_area = right_area.inner(Margin {
@@ -121,6 +127,11 @@ impl App<'_> {
     pub fn new() -> Self {
         let tasks = load_tasks().unwrap_or_else(|_| Vec::new());
         let group = Self::group_date_tasks(&tasks);
+
+        let mut text_area = TextArea::default();
+        text_area.set_placeholder_text("/ to search");
+        text_area.set_cursor_line_style(Style::default());
+
         Self {
             focus: AppFocus::LeftArea,
             last_selected: None,
@@ -136,7 +147,33 @@ impl App<'_> {
             new_task: NewTask::new(),
             new_task_save: None,
             right_area: RightArea::NewTask,
+            search: text_area,
         }
+    }
+
+    fn get_filtered_tasks(&self) -> Vec<Task> {
+        let search_text = &self.search.lines()[0];
+        if search_text.is_empty() {
+            return self.tasks.list.clone();
+        }
+        self.tasks
+            .list
+            .iter()
+            .filter(|t| t.title.contains(search_text))
+            .cloned()
+            .collect()
+    }
+
+    fn render_search(&mut self, area: Rect, buf: &mut Buffer, border_style: Style) {
+        let cursor_style = if border_style == PRIMARY_STYLE {
+            Style::default().reversed()
+        } else {
+            Style::default()
+        };
+        self.search.set_cursor_style(cursor_style);
+        self.search
+            .set_block(rounded_block(" Search ", border_style));
+        self.search.render(area, buf);
     }
 
     fn render_footer(&self, area: Rect, buf: &mut Buffer, line: Line) {
@@ -302,6 +339,7 @@ impl App<'_> {
                     self.right_area = RightArea::NewTask;
                     self.select_none();
                 }
+                KeyCode::Char('/') => self.focus = AppFocus::Search,
                 _ => {}
             },
             AppFocus::RightArea => {
@@ -335,6 +373,20 @@ impl App<'_> {
                 }
                 KeyCode::Char('n') => self.focus = AppFocus::LeftArea,
                 _ => {}
+            },
+            AppFocus::Search => match key.code {
+                KeyCode::Esc => self.focus = AppFocus::LeftArea,
+                KeyCode::Enter => self.focus = AppFocus::LeftArea,
+                KeyCode::BackTab | KeyCode::Tab => self.focus = AppFocus::LeftArea,
+                _ => {
+                    self.search.input(key);
+                    let searched_tasks = self.get_filtered_tasks();
+                    let group = Self::group_date_tasks(&searched_tasks);
+                    self.tasks.selectable = group.0;
+                    self.tasks.grouped = group.1;
+                    self.total = group.2;
+                    self.current_selection.select(None);
+                }
             },
         }
         false
@@ -507,7 +559,12 @@ impl App<'_> {
                     footer_text.extend_from_slice(&[arrows, "[Tab] Focus Tasks", "[q] Quit"]);
                 }
             }
-            AppFocus::DeletePrompt => footer_text = confirm::get_footer_text(),
+            AppFocus::DeletePrompt => footer_text = crate::confirm::get_footer_text(),
+            AppFocus::Search => {
+                footer_text.push("[Esc] Exit Search");
+                footer_text.push("[Enter] Exit Search");
+                footer_text.push("[Tab] Exit Search");
+            }
         }
 
         footer_text.join(" | ")
