@@ -348,14 +348,14 @@ impl App<'_> {
                     if self.new_task.quit {
                         if self.new_task.completed {
                             self.add_or_modify_task();
+                            self.search.select_all();
+                            self.search.delete_newline();
                             self.right_area = RightArea::Preview;
                             self.new_task = NewTask::new();
                         }
                         self.save_new_task_state();
                         self.focus = AppFocus::LeftArea;
-                        if !self.select_last_selected() {
-                            self.select_none();
-                        }
+                        self.current_selection.select(None);
                     }
                 } else {
                     match key.code {
