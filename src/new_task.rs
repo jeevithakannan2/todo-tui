@@ -1,4 +1,5 @@
-use crate::handle_json::Task;
+use crate::{app::RED_STYLE, handle_json::Task};
+use chrono::NaiveDate;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
@@ -49,7 +50,7 @@ impl Widget for &mut NewTask<'_> {
 
         self.set_cursor_style();
         self.widgets.title.render(title_area, buf);
-        self.widgets.date.render(date_area, buf);
+        self.render_date(date_area, buf);
         self.widgets.description.render(description_area, buf);
     }
 }
@@ -57,9 +58,9 @@ impl Widget for &mut NewTask<'_> {
 impl Widgets<'_> {
     pub fn new() -> Self {
         let mut title = TextArea::default();
-        let mut description = TextArea::default();
         let mut date = TextArea::default();
-        Widgets::set_block(&mut title, &mut date, &mut description);
+        let mut description = TextArea::default();
+        Self::set_block(&mut title, &mut date, &mut description);
         Self {
             title,
             date,
@@ -71,10 +72,10 @@ impl Widgets<'_> {
         let mut title = TextArea::new(title);
         let mut date = TextArea::new(date);
         let mut description = TextArea::new(description);
-        Widgets::set_block(&mut title, &mut date, &mut description);
-        title.move_cursor(CursorMove::End);
-        date.move_cursor(CursorMove::End);
-        description.move_cursor(CursorMove::End);
+        Self::set_block(&mut title, &mut date, &mut description);
+        for widget in [&mut title, &mut date, &mut description].iter_mut() {
+            widget.move_cursor(CursorMove::End);
+        }
         Self {
             title,
             date,
@@ -91,10 +92,10 @@ impl Widgets<'_> {
         }
 
         title.set_block(get_block(" Title "));
-        date.set_block(get_block(" Date "));
+        // Date set_block will be updated in render_date fn
         description.set_block(get_block(" Description "));
 
-        // Removes the underline when typed
+        // Remove the underline when typing
         title.set_cursor_line_style(Style::default());
         date.set_cursor_line_style(Style::default());
         description.set_cursor_line_style(Style::default());
@@ -135,6 +136,23 @@ impl NewTask<'_> {
         }
     }
 
+    fn render_date(&mut self, area: Rect, buf: &mut Buffer) {
+        let date_val = self.widgets.date.lines()[0].to_string();
+        let date = NaiveDate::parse_from_str(&date_val, "%Y-%m-%d");
+        let style = match date {
+            Ok(_) => Style::default(),
+            Err(_) if !date_val.is_empty() => RED_STYLE,
+            _ => Style::default(),
+        };
+        self.widgets.date.set_block(
+            Block::bordered()
+                .title(" Date - (YYYY-MM-DD) ")
+                .border_type(BorderType::Rounded),
+        );
+        self.widgets.date.set_cursor_line_style(style);
+        self.widgets.date.render(area, buf);
+    }
+
     pub fn from(task: Task) -> Self {
         let description = task.description.lines().map(|s| s.to_string()).collect();
         let date = vec![task.date];
@@ -166,18 +184,15 @@ impl NewTask<'_> {
     pub fn handle_key(&mut self, key: KeyEvent) {
         match self.mode {
             Mode::Normal => match key.code {
-                KeyCode::Tab => {
-                    self.quit = true;
-                }
-                KeyCode::Char('i') => {
-                    if self.mode == Mode::Normal {
-                        self.mode = Mode::Insert;
-                    }
-                }
+                KeyCode::Tab => self.quit = true,
+                KeyCode::Char('i') => self.mode = Mode::Insert,
                 KeyCode::Enter => {
+                    if self.widgets.date.style() == RED_STYLE {
+                        return;
+                    }
                     self.mode = Mode::Normal;
                     let title_val = self.widgets.title.lines()[0].to_string();
-                    let date_val: String = self.widgets.date.lines()[0].to_string();
+                    let date_val = self.widgets.date.lines()[0].to_string();
                     let description_val = self.widgets.description.lines().join("\n");
                     self.task = Task {
                         id: self.task.id,
@@ -197,16 +212,14 @@ impl NewTask<'_> {
                 KeyCode::BackTab => self.focus = self.focus.previous(),
                 _ => match self.focus {
                     Focus::Title => {
-                        if key.code == KeyCode::Enter {
-                            return;
+                        if key.code != KeyCode::Enter {
+                            self.widgets.title.input(key);
                         }
-                        self.widgets.title.input(key);
                     }
                     Focus::Date => {
-                        if key.code == KeyCode::Enter {
-                            return;
+                        if key.code != KeyCode::Enter {
+                            self.widgets.date.input(key);
                         }
-                        self.widgets.date.input(key);
                     }
                     Focus::Description => {
                         self.widgets.description.input(key);
