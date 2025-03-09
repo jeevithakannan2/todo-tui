@@ -23,6 +23,8 @@ pub struct App<'a> {
     right_area: RightArea,
     // The state of the new task
     new_task: NewTask<'a>,
+    // Save of the new task state
+    new_task_save: Option<NewTask<'a>>,
     // Used to determine which part of the app is currently in focus
     focus: AppFocus,
     // The last selected index of the task list before clearing the selection
@@ -41,7 +43,7 @@ struct Tasks {
     list: Vec<Task>,
     // Grouped tasks by date ( saved in state to prevent the creation of a new map every render )
     grouped: BTreeMap<NaiveDate, Vec<Task>>,
-    // Selectable indexes of tasks ( Excludes date headers ) Vec <(index, id)>
+    // Selectable indexes of tasks ( Excludes date headers ) Vec <(row index, task id)>
     selectable: Vec<(usize, u16)>,
 }
 
@@ -132,6 +134,7 @@ impl App<'_> {
                 selectable: group.0,
             },
             new_task: NewTask::new(),
+            new_task_save: None,
             right_area: RightArea::NewTask,
         }
     }
@@ -160,8 +163,7 @@ impl App<'_> {
             RightArea::EditTask => " Edit Task ",
         };
 
-        let block = crate::helpers::rounded_block(title, style);
-        block.render(area, buf);
+        crate::helpers::rounded_block(title, style).render(area, buf);
     }
 
     fn group_date_tasks(
@@ -288,12 +290,13 @@ impl App<'_> {
                     if let Some(task) = self.get_selected() {
                         self.new_task = NewTask::from(task);
                         self.focus = AppFocus::RightArea;
+                        self.save_new_task_state();
                         self.right_area = RightArea::EditTask;
                     }
                 }
                 KeyCode::Char('p') => self.right_area = RightArea::Preview,
                 KeyCode::Char('n') => {
-                    self.new_task = self.new_task.restore();
+                    self.restore_new_task_state();
                     self.new_task.quit = false;
                     self.focus = AppFocus::RightArea;
                     self.right_area = RightArea::NewTask;
@@ -310,8 +313,11 @@ impl App<'_> {
                             self.right_area = RightArea::Preview;
                             self.new_task = NewTask::new();
                         }
+                        self.save_new_task_state();
                         self.focus = AppFocus::LeftArea;
-                        self.scroll(ScrollDirection::Down);
+                        if !self.select_last_selected() {
+                            self.select_none();
+                        }
                     }
                 } else {
                     match key.code {
@@ -375,6 +381,20 @@ impl App<'_> {
             return true;
         }
         false
+    }
+
+    fn restore_new_task_state(&mut self) {
+        self.new_task = if let Some(save) = self.new_task_save.as_ref() {
+            save.clone()
+        } else {
+            NewTask::new()
+        };
+    }
+
+    fn save_new_task_state(&mut self) {
+        if self.right_area == RightArea::NewTask {
+            self.new_task_save = Some(self.new_task.clone());
+        }
     }
 
     fn scroll(&mut self, scroll_direction: ScrollDirection) {

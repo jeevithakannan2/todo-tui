@@ -12,7 +12,6 @@ pub struct NewTask<'a> {
     mode: Mode,
     widgets: Widgets<'a>,
     task: Task,
-    save: Option<Box<NewTask<'a>>>,
     pub quit: bool,
     pub completed: bool,
 }
@@ -132,7 +131,6 @@ impl NewTask<'_> {
             quit: false,
             completed: false,
             task: Task::new(),
-            save: None,
             widgets: Widgets::new(),
         }
     }
@@ -147,7 +145,6 @@ impl NewTask<'_> {
             quit: false,
             completed: false,
             task: Task::from(task.id),
-            save: None,
             widgets: Widgets::from(title, date, description),
         }
     }
@@ -221,18 +218,6 @@ impl NewTask<'_> {
 
     pub fn get_task(&self) -> Task {
         self.task.clone()
-    }
-
-    pub fn restore(&self) -> Self {
-        if let Some(save) = self.save.as_ref() {
-            save.as_ref().clone()
-        } else {
-            self.clone()
-        }
-    }
-
-    pub fn save_state(&mut self) {
-        self.save = Some(Box::new(self.clone()));
     }
 
     pub fn footer_text(&self) -> Box<[&str]> {
