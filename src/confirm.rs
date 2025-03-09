@@ -43,7 +43,8 @@ impl Confirm {
                 Span::styled(" [ ", Style::reset()),
                 Span::styled("N", RED_STYLE.bold()),
                 Span::styled(" ] ", Style::reset()),
-            ]);
+            ])
+            .title_alignment(Alignment::Center);
 
         Paragraph::new(self.body.as_str())
             .centered()

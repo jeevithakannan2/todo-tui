@@ -33,7 +33,6 @@ pub fn create_popup_area(area: Rect, size: &PopupSize) -> Rect {
 pub fn rounded_block(title: &str, border_style: Style) -> Block {
     Block::bordered()
         .title(title.reset().bold())
-        .title_alignment(Alignment::Center)
         .border_type(BorderType::Rounded)
         .border_style(border_style)
 }
