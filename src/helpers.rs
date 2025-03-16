@@ -5,7 +5,15 @@ use ratatui::{
 };
 
 pub enum PopupSize {
-    Percentage { x: u16, y: u16 },
+    Percentage {
+        x: u16,
+        y: u16,
+    },
+    #[cfg(feature = "encryption")]
+    FixedHeight {
+        x: u16,
+        height: u16,
+    },
 }
 
 impl PopupSize {
@@ -13,6 +21,10 @@ impl PopupSize {
         match *self {
             PopupSize::Percentage { x, y } => {
                 ([Constraint::Percentage(x)], [Constraint::Percentage(y)])
+            }
+            #[cfg(feature = "encryption")]
+            PopupSize::FixedHeight { x, height } => {
+                ([Constraint::Percentage(x)], [Constraint::Length(height)])
             }
         }
     }
