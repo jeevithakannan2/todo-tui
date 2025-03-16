@@ -4,7 +4,6 @@ version = "0.2.1"
 edition = "2024"
 
 [features]
-default = ["encryption"]
 encryption = ["aes-gcm", "keyring", "argon2", "rand", "whoami", "clap"]
 
 [dependencies]
