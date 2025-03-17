@@ -283,10 +283,8 @@ impl App<'_> {
         let task = self.get_selected().unwrap_or(temp_task);
         let description = task.description.as_str();
         self.verify_preview_scroll(description.lines().count() as u16, area);
-        Paragraph::new(description)
-            .scroll(self.preview_scroll)
-            .wrap(Wrap { trim: true })
-            .render(area, buf)
+        let text = tui_markdown::from_str(description).style(Style::default());
+        text.render(area, buf);
     }
 
     // Verify that the preview scroll is within bounds
