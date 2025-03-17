@@ -187,7 +187,7 @@ impl NewTask<'_> {
                 KeyCode::Tab => self.quit = true,
                 KeyCode::Char('i') => self.mode = Mode::Insert,
                 KeyCode::Enter => {
-                    if self.widgets.date.style() == RED_STYLE {
+                    if self.widgets.date.cursor_line_style() == RED_STYLE {
                         return;
                     }
                     self.mode = Mode::Normal;
