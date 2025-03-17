@@ -42,24 +42,31 @@ impl WidgetHandler for App<'_> {
 }
 
 fn main() -> Result<()> {
+    let mut terminal = ratatui::init();
     #[cfg(feature = "encryption")]
+    enc(&mut terminal)?;
+    let app_result = run_loop(&mut terminal, App::new());
+    ratatui::restore();
+    app_result
+}
+
+#[cfg(feature = "encryption")]
+fn enc(terminal: &mut DefaultTerminal) -> Result<()> {
     let args = Args::parse();
-    #[cfg(feature = "encryption")]
     if args.reset {
         handle_json::reset()?;
         auth::delete_stored_password();
     }
-    let mut terminal = ratatui::init();
-    #[cfg(feature = "encryption")]
     let password = auth::get_password();
-    #[cfg(feature = "encryption")]
     if password.is_empty() || args.reset {
-        run_loop(&mut terminal, PasswordPrompt::new())?;
+        run_loop(terminal, PasswordPrompt::new())?;
     }
-
-    let app_result = run_loop(&mut terminal, App::new());
-    ratatui::restore();
-    app_result
+    if args.change_password {
+        let tasks = handle_json::load_tasks_encrypted().unwrap_or_else(|_| Vec::new());
+        run_loop(terminal, PasswordPrompt::new())?;
+        handle_json::save_tasks_ecrypted(&tasks).unwrap();
+    }
+    Ok(())
 }
 
 fn run_loop<T>(terminal: &mut DefaultTerminal, mut widget: T) -> Result<()>
