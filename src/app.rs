@@ -1,5 +1,5 @@
 use crate::{
-    handle_json::{Task, load_tasks, save_tasks},
+    handle_json::Task,
     helpers::{PopupSize, rounded_block},
     new_task,
     theme::Theme,
@@ -14,38 +14,44 @@ use ratatui::{
 use std::collections::BTreeMap;
 use tui_textarea::TextArea;
 
+#[cfg(feature = "encryption")]
+use crate::handle_json::{load_tasks_encrypted, save_tasks_ecrypted};
+
+#[cfg(not(feature = "encryption"))]
+use crate::handle_json::{load_tasks, save_tasks};
+
 pub struct App<'a> {
-    // Selected theme
+    /// Selected theme
     theme: Theme,
-    // State of the Tasks
+    /// State of the Tasks
     tasks: Tasks,
-    // Display the new task or preview
+    /// Display the new task or preview
     right_area: RightArea,
-    // The state of the new task
+    /// The state of the new task
     new_task: NewTask<'a>,
-    // Save of the new task state
+    /// Save of the new task state
     new_task_save: Option<NewTask<'a>>,
-    // Used to determine which part of the app is currently in focus
+    /// Used to determine which part of the app is currently in focus
     focus: AppFocus,
-    // The last selected index of the task list before clearing the selection
+    /// The last selected index of the task list before clearing the selection
     last_selected: Option<TableState>,
-    // The state of the task list
+    /// The state of the task list
     current_selection: TableState,
-    // Total rows in the table
+    /// Total rows in the table
     total: usize,
-    // Preview scroll state vertical and horizontal
+    /// Preview scroll state vertical and horizontal
     preview_scroll: (u16, u16),
-    // Search text area state
+    /// Search text area state
     search: TextArea<'a>,
 }
 
-// State of the tasks
+/// State of the tasks
 struct Tasks {
-    // The list of tasks in json
+    /// The list of tasks in json
     list: Vec<Task>,
-    // Grouped tasks by date ( saved in state to prevent the creation of a new map every render )
+    /// Grouped tasks by date ( saved in state to prevent the creation of a new map every render )
     grouped: BTreeMap<NaiveDate, Vec<Task>>,
-    // Selectable indexes of tasks ( Excludes date headers ) Vec <(row index, task id)>
+    /// Selectable indexes of tasks ( Excludes date headers ) Vec <(row index, task id)>
     selectable: Vec<(usize, u16)>,
 }
 
@@ -125,6 +131,9 @@ impl Widget for &mut App<'_> {
 
 impl App<'_> {
     pub fn new() -> Self {
+        #[cfg(feature = "encryption")]
+        let tasks = load_tasks_encrypted().unwrap_or_else(|_| Vec::new());
+        #[cfg(not(feature = "encryption"))]
         let tasks = load_tasks().unwrap_or_else(|_| Vec::new());
         let group = Self::group_date_tasks(&tasks);
 
@@ -497,6 +506,9 @@ impl App<'_> {
         self.tasks.selectable = grouped_tasks.0;
         self.tasks.grouped = grouped_tasks.1;
         self.total = grouped_tasks.2;
+        #[cfg(feature = "encryption")]
+        save_tasks_ecrypted(&self.tasks.list).unwrap();
+        #[cfg(not(feature = "encryption"))]
         save_tasks(&self.tasks.list).unwrap();
     }
 
@@ -564,7 +576,6 @@ impl App<'_> {
                 footer_text.push("[Tab] Exit Search");
             }
         }
-
         footer_text.join(" | ")
     }
 }
