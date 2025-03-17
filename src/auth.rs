@@ -6,7 +6,7 @@ use ratatui::{
     buffer::Buffer,
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     layout::{Constraint, Layout, Rect},
-    style::Style,
+    style::{Style, Stylize},
     widgets::Widget,
 };
 use tui_textarea::TextArea;
@@ -181,11 +181,11 @@ impl PasswordPrompt<'_> {
         }
     }
 
-    fn get_border_style(&self, focus: Focus) -> Style {
+    fn get_style(&self, focus: Focus) -> (Style, Style) {
         if focus == self.focus {
-            PRIMARY_STYLE
+            (PRIMARY_STYLE, Style::default().reversed())
         } else {
-            SECONDARY_STYLE
+            (SECONDARY_STYLE, Style::default())
         }
     }
 
@@ -194,10 +194,11 @@ impl PasswordPrompt<'_> {
     }
 
     fn render_password(&mut self, area: Rect, buf: &mut Buffer) {
-        let style = self.get_border_style(Focus::Password);
+        let style = self.get_style(Focus::Password);
         let popup_area =
             crate::helpers::create_popup_area(area, &PopupSize::FixedHeight { x: 100, height: 3 });
-        let block = crate::helpers::rounded_block("Password", style);
+        let block = crate::helpers::rounded_block(" Password ", style.0);
+        self.password.set_cursor_style(style.1);
         self.password.set_cursor_line_style(Style::default());
         self.password.set_block(block);
         self.password.set_mask_char('*');
@@ -206,10 +207,16 @@ impl PasswordPrompt<'_> {
     }
 
     fn render_confirm_password(&mut self, area: Rect, buf: &mut Buffer) {
-        let style = self.get_border_style(Focus::ConfirmPassword);
+        let style = self.get_style(Focus::ConfirmPassword);
         let popup_area =
             crate::helpers::create_popup_area(area, &PopupSize::FixedHeight { x: 100, height: 3 });
-        let block = crate::helpers::rounded_block("Confirm password", style);
+        let title = if !self.check_passwords_match() {
+            " Confirm password - Passwords do not match "
+        } else {
+            " Confirm password "
+        };
+        let block = crate::helpers::rounded_block(title, style.0);
+        self.confirm_password.set_cursor_style(style.1);
         self.confirm_password
             .set_cursor_line_style(Style::default());
         self.confirm_password.set_block(block);
