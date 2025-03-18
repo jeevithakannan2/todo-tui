@@ -4,7 +4,7 @@ version = "0.3.0"
 edition = "2024"
 
 [features]
-encryption = ["aes-gcm", "keyring", "argon2", "rand", "whoami", "clap"]
+encryption = ["aes-gcm", "rand", "clap"]
 
 [dependencies]
 chrono = "0.4.40"
@@ -14,9 +14,16 @@ serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
 tui-markdown = "0.3.3"
 tui-textarea = "0.7.0"
+uuid = { version = "1.16.0", features = ["v7"] }
+
 aes-gcm = { version = "0.10.3", optional = true }
-keyring = { version = "3.6.1", features = ["apple-native", "windows-native", "sync-secret-service"], optional = true }
-argon2 = { version = "0.5.3", optional = true }
 rand = { version = "0.8", optional = true }
-whoami = { version = "1.2", optional = true }
 clap = { version = "4.5.32", features = ["derive"], optional = true }
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+strip = true
+opt-level = "z"
+panic = "abort"
+debug = false

@@ -1,11 +1,11 @@
 use clap::Parser;
 
-#[derive(Debug, Parser, Clone)]
+#[derive(Parser)]
 pub struct Args {
-    /// Delete all tasks and OS password start new.
+    /// Delete all tasks and create a new encyption key ( Use this if you forgot your key ).
     #[arg(short, long)]
     pub reset: bool,
-    /// Change the password used to encrypt tasks.
+    /// Generate a new encryption key.
     #[arg(short, long)]
-    pub change_password: bool,
+    pub generate_key: bool,
 }

@@ -52,7 +52,7 @@ struct Tasks {
     /// Grouped tasks by date ( saved in state to prevent the creation of a new map every render )
     grouped: BTreeMap<NaiveDate, Vec<Task>>,
     /// Selectable indexes of tasks ( Excludes date headers ) Vec <(row index, task id)>
-    selectable: Vec<(usize, u16)>,
+    selectable: Vec<(usize, u128)>,
 }
 
 #[derive(PartialEq)]
@@ -214,13 +214,13 @@ impl App<'_> {
 
     fn group_date_tasks(
         tasks: &[Task],
-    ) -> (Vec<(usize, u16)>, BTreeMap<NaiveDate, Vec<Task>>, usize) {
+    ) -> (Vec<(usize, u128)>, BTreeMap<NaiveDate, Vec<Task>>, usize) {
         let mut grouped_tasks: BTreeMap<NaiveDate, Vec<Task>> = BTreeMap::new();
         for task in tasks {
             let date = NaiveDate::parse_from_str(&task.date, "%Y-%m-%d").unwrap();
             grouped_tasks.entry(date).or_default().push(task.clone());
         }
-        let mut selectable: Vec<(usize, u16)> = Vec::new();
+        let mut selectable: Vec<(usize, u128)> = Vec::new();
         let mut idx = 0;
         for (_, tasks) in &grouped_tasks {
             idx += 1;
