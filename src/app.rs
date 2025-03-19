@@ -1,4 +1,4 @@
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 use new_task::NewTask;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
@@ -250,11 +250,18 @@ impl App<'_> {
     ) -> (Vec<(usize, u128)>, BTreeMap<NaiveDate, Vec<Task>>, usize) {
         let mut grouped_tasks: BTreeMap<NaiveDate, Vec<Task>> = BTreeMap::new();
         for task in tasks {
-            let date = NaiveDate::parse_from_str(&task.date, "%Y-%m-%d").unwrap();
+            let date = NaiveDate::parse_from_str(&task.date, "%d-%m-%Y").unwrap();
             grouped_tasks.entry(date).or_default().push(task.clone());
         }
+
+        // Sort by time
+        for (_, task_list) in grouped_tasks.iter_mut() {
+            task_list.sort_by_key(|task| NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap());
+        }
+
         let mut selectable: Vec<(usize, u128)> = Vec::new();
         let mut idx = 0;
+
         for (_, tasks) in &grouped_tasks {
             idx += 1;
             for task in tasks {
@@ -270,13 +277,13 @@ impl App<'_> {
         let block = crate::helpers::rounded_block(" Tasks ", style);
 
         let mut rows: Vec<Row> = Vec::with_capacity(self.total);
-        let today = chrono::Local::now().date_naive();
+        let now = chrono::Local::now().naive_local();
 
         for (date, tasks) in &self.tasks.grouped {
             // Format the date header based on its relation to today
-            let date_header = if *date == today {
+            let date_header = if *date == now.date() {
                 "Today".to_string()
-            } else if *date == today.succ_opt().unwrap_or(today) {
+            } else if *date == now.date().succ_opt().unwrap_or(now.date()) {
                 "Tomorrow".to_string()
             } else {
                 format!("{} {}", date.format("%a"), date.format("%b %d %Y"))
@@ -289,8 +296,12 @@ impl App<'_> {
             // Add tasks under the date
             for (i, task) in tasks.iter().enumerate() {
                 let title = task.title.as_str();
+                let time = NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap_or(now.time());
+
                 let (icon, style) = if task.completed {
                     (self.theme.get_completed(), Style::default().dark_gray())
+                } else if time < now.time() && *date <= now.date() {
+                    (self.theme.get_uncompleted(), Style::default().red().bold())
                 } else {
                     (self.theme.get_uncompleted(), Style::default().bold())
                 };
@@ -319,6 +330,7 @@ impl App<'_> {
             id: 0,
             title: String::new(),
             date: String::new(),
+            time: String::new(),
             description: String::from("No task selected"),
             completed: false,
         };

@@ -6,6 +6,7 @@ pub struct Task {
     pub id: u128,
     pub title: String,
     pub date: String,
+    pub time: String,
     pub description: String,
     pub completed: bool,
 }
@@ -16,6 +17,7 @@ impl Task {
             id: uuid::Uuid::now_v7().as_u128(),
             title: String::new(),
             date: String::new(),
+            time: String::new(),
             description: String::new(),
             completed: false,
         }
@@ -26,6 +28,7 @@ impl Task {
             id,
             title: String::new(),
             date: String::new(),
+            time: String::new(),
             description: String::new(),
             completed: false,
         }
