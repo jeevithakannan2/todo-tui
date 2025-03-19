@@ -1,5 +1,5 @@
 use crate::{app::RED_STYLE, tasks::Task};
-use chrono::NaiveDate;
+use chrono::{NaiveDate, NaiveTime};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
@@ -21,6 +21,7 @@ pub struct NewTask<'a> {
 struct Widgets<'a> {
     title: TextArea<'a>,
     date: TextArea<'a>,
+    time: TextArea<'a>,
     description: TextArea<'a>,
 }
 
@@ -28,6 +29,7 @@ struct Widgets<'a> {
 enum Focus {
     Title,
     Date,
+    Time,
     Description,
 }
 
@@ -44,13 +46,15 @@ impl Widget for &mut NewTask<'_> {
         let vertical = Layout::vertical([
             Constraint::Length(3),
             Constraint::Length(3),
+            Constraint::Length(3),
             Constraint::Min(1),
         ]);
-        let [title_area, date_area, description_area] = vertical.areas(area);
+        let [title_area, date_area, time_area, description_area] = vertical.areas(area);
 
         self.set_cursor_style();
         self.widgets.title.render(title_area, buf);
         self.render_date(date_area, buf);
+        self.render_time(time_area, buf);
         self.widgets.description.render(description_area, buf);
     }
 }
@@ -59,31 +63,45 @@ impl Widgets<'_> {
     pub fn new() -> Self {
         let mut title = TextArea::default();
         let mut date = TextArea::default();
+        let mut time = TextArea::default();
         let mut description = TextArea::default();
-        Self::set_block(&mut title, &mut date, &mut description);
+        Self::set_block(&mut title, &mut date, &mut time, &mut description);
         Self {
             title,
             date,
+            time,
             description,
         }
     }
 
-    pub fn from(title: Vec<String>, date: Vec<String>, description: Vec<String>) -> Self {
+    pub fn from(
+        title: Vec<String>,
+        date: Vec<String>,
+        time: Vec<String>,
+        description: Vec<String>,
+    ) -> Self {
         let mut title = TextArea::new(title);
         let mut date = TextArea::new(date);
+        let mut time = TextArea::new(time);
         let mut description = TextArea::new(description);
-        Self::set_block(&mut title, &mut date, &mut description);
-        for widget in [&mut title, &mut date, &mut description].iter_mut() {
+        Self::set_block(&mut title, &mut date, &mut time, &mut description);
+        for widget in [&mut title, &mut date, &mut time, &mut description].iter_mut() {
             widget.move_cursor(CursorMove::End);
         }
         Self {
             title,
             date,
+            time,
             description,
         }
     }
 
-    fn set_block(title: &mut TextArea, date: &mut TextArea, description: &mut TextArea) {
+    fn set_block(
+        title: &mut TextArea,
+        date: &mut TextArea,
+        time: &mut TextArea,
+        description: &mut TextArea,
+    ) {
         // Helper function to create a bordered block
         fn get_block(title: &str) -> Block {
             Block::bordered()
@@ -92,16 +110,18 @@ impl Widgets<'_> {
         }
 
         title.set_block(get_block(" Title "));
-        // Date set_block will be updated in render_date fn
+        // Time && Date set_block will be updated in render_date fn
         description.set_block(get_block(" Description "));
 
         // Remove the underline when typing
         title.set_cursor_line_style(Style::default());
         date.set_cursor_line_style(Style::default());
+        time.set_cursor_line_style(Style::default());
         description.set_cursor_line_style(Style::default());
 
         title.set_placeholder_text("Enter your task title here");
         date.set_placeholder_text("Enter your task date here");
+        time.set_placeholder_text("Enter your estimated completion time here");
         description.set_placeholder_text("Enter your task description here");
     }
 }
@@ -110,7 +130,8 @@ impl Focus {
     pub fn next(&self) -> Self {
         match self {
             Focus::Title => Focus::Date,
-            Focus::Date => Focus::Description,
+            Focus::Date => Focus::Time,
+            Focus::Time => Focus::Description,
             Focus::Description => Focus::Title,
         }
     }
@@ -119,7 +140,8 @@ impl Focus {
         match self {
             Focus::Title => Focus::Description,
             Focus::Date => Focus::Title,
-            Focus::Description => Focus::Date,
+            Focus::Description => Focus::Time,
+            Focus::Time => Focus::Date,
         }
     }
 }
@@ -136,9 +158,26 @@ impl NewTask<'_> {
         }
     }
 
+    fn render_time(&mut self, area: Rect, buf: &mut Buffer) {
+        let time_val = self.widgets.time.lines()[0].to_string();
+        let time = NaiveTime::parse_from_str(&time_val, "%H:%M");
+        let style = match time {
+            Ok(_) => Style::default(),
+            Err(_) if !time_val.is_empty() => RED_STYLE,
+            _ => Style::default(),
+        };
+        self.widgets.time.set_block(
+            Block::bordered()
+                .title(" Time - (HH:MM) ")
+                .border_type(BorderType::Rounded),
+        );
+        self.widgets.time.set_cursor_line_style(style);
+        self.widgets.time.render(area, buf);
+    }
+
     fn render_date(&mut self, area: Rect, buf: &mut Buffer) {
         let date_val = self.widgets.date.lines()[0].to_string();
-        let date = NaiveDate::parse_from_str(&date_val, "%Y-%m-%d");
+        let date = NaiveDate::parse_from_str(&date_val, "%d-%m-%Y");
         let style = match date {
             Ok(_) => Style::default(),
             Err(_) if !date_val.is_empty() => RED_STYLE,
@@ -146,7 +185,7 @@ impl NewTask<'_> {
         };
         self.widgets.date.set_block(
             Block::bordered()
-                .title(" Date - (YYYY-MM-DD) ")
+                .title(" Date - (DD-MM-YYYY) ")
                 .border_type(BorderType::Rounded),
         );
         self.widgets.date.set_cursor_line_style(style);
@@ -156,6 +195,7 @@ impl NewTask<'_> {
     pub fn from(task: Task) -> Self {
         let description = task.description.lines().map(|s| s.to_string()).collect();
         let date = vec![task.date];
+        let time = vec![task.time];
         let title = vec![task.title];
         Self {
             focus: Focus::Title,
@@ -163,22 +203,24 @@ impl NewTask<'_> {
             quit: false,
             completed: false,
             task: Task::from(task.id),
-            widgets: Widgets::from(title, date, description),
+            widgets: Widgets::from(title, date, time, description),
         }
     }
 
     fn set_cursor_style(&mut self) {
-        let mut cursor_styles = (Style::default(), Style::default(), Style::default());
+        let mut cursor_styles = (Style::default(), Style::default(), Style::default(), Style::default());
         if self.mode == Mode::Insert {
             match self.focus {
                 Focus::Title => cursor_styles.0 = cursor_styles.0.reversed(),
                 Focus::Date => cursor_styles.1 = cursor_styles.1.reversed(),
-                Focus::Description => cursor_styles.2 = cursor_styles.2.reversed(),
+                Focus::Time => cursor_styles.2 = cursor_styles.2.reversed(),
+                Focus::Description => cursor_styles.3 = cursor_styles.3.reversed(),
             }
         }
         self.widgets.title.set_cursor_style(cursor_styles.0);
         self.widgets.date.set_cursor_style(cursor_styles.1);
-        self.widgets.description.set_cursor_style(cursor_styles.2);
+        self.widgets.time.set_cursor_style(cursor_styles.2);
+        self.widgets.description.set_cursor_style(cursor_styles.3);
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
@@ -193,11 +235,13 @@ impl NewTask<'_> {
                     self.mode = Mode::Normal;
                     let title_val = self.widgets.title.lines()[0].to_string();
                     let date_val = self.widgets.date.lines()[0].to_string();
+                    let time_val = self.widgets.time.lines()[0].to_string();
                     let description_val = self.widgets.description.lines().join("\n");
                     self.task = Task {
                         id: self.task.id,
                         title: title_val,
                         date: date_val,
+                        time: time_val,
                         description: description_val,
                         completed: false,
                     };
@@ -219,6 +263,11 @@ impl NewTask<'_> {
                     Focus::Date => {
                         if key.code != KeyCode::Enter {
                             self.widgets.date.input(key);
+                        }
+                    }
+                    Focus::Time => {
+                        if key.code != KeyCode::Enter {
+                            self.widgets.time.input(key);
                         }
                     }
                     Focus::Description => {
