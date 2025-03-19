@@ -338,12 +338,15 @@ impl App<'_> {
         let description = task.description.as_str();
         self.verify_preview_scroll(description.lines().count() as u16, area);
         let text = tui_markdown::from_str(description).style(Style::default());
-        text.render(area, buf);
+        Paragraph::new(text)
+            .scroll(self.preview_scroll)
+            .wrap(Wrap { trim: true })
+            .render(area, buf);
     }
 
     // Verify that the preview scroll is within bounds
     fn verify_preview_scroll(&mut self, preview_lines: u16, preview_area: Rect) {
-        let preview_area_height = preview_area.height.saturating_sub(2); // Upper and lower border 2px
+        let preview_area_height = preview_area.height;
         self.preview_scroll.0 = if preview_lines < self.preview_scroll.0 + preview_area_height {
             preview_lines.saturating_sub(preview_area_height)
         } else {
