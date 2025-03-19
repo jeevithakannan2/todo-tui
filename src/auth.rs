@@ -1,9 +1,10 @@
-use crate::handle_json::Task;
 use aes_gcm::{Aes256Gcm, KeyInit, Nonce, aead::Aead};
 use core::panic;
 use directories::BaseDirs;
 use rand::RngCore;
 use std::{fs, io::Write, path::PathBuf};
+
+use crate::tasks::Task;
 
 /// Path to store the encryption key
 fn key_path() -> PathBuf {
@@ -25,12 +26,8 @@ pub fn generate_key() {
         use std::os::unix::fs::PermissionsExt;
         let metadata = fs::metadata(&key_file).expect("Failed to read metadata");
         let mut perms = metadata.permissions();
-        perms.set_mode(0o600); // Owner read/write only similar to chmod 600
+        perms.set_mode(0o600); // Owner read/write only equals to chmod 600 cmd
         fs::set_permissions(&key_file, perms).expect("Failed to set permissions");
-        println!(
-            "Key generated in {}. Make sure to not lose this or else you will lose all your tasks",
-            key_file.display()
-        );
     }
 
     #[cfg(target_os = "windows")]
@@ -51,11 +48,6 @@ pub fn generate_key() {
             .args(&["-Command", &ps_script])
             .status()
             .expect("Failed to set file permissions");
-
-        println!(
-            "Key generated in {}. Make sure to not lose this or else you will lose all your tasks",
-            key_path
-        );
     }
 }
 

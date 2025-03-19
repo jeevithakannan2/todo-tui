@@ -5,44 +5,26 @@ use ratatui::{
 };
 use std::io::Result;
 
-#[cfg(feature = "encryption")]
-use crate::cli::Args;
-#[cfg(feature = "encryption")]
-use clap::Parser;
-
 mod app;
+mod auth;
+mod cli;
 mod confirm;
-mod handle_json;
+mod tasks;
 mod helpers;
 mod new_task;
+mod settings;
 mod theme;
 
-#[cfg(feature = "encryption")]
-mod auth;
-#[cfg(feature = "encryption")]
-mod cli;
-
 fn main() -> Result<()> {
-    #[cfg(feature = "encryption")]
-    let args = Args::parse();
-    #[cfg(feature = "encryption")]
-    enc(args)?;
+    cli::handle_arguments()?;
     let mut terminal = ratatui::init();
-    let app_result = run(&mut terminal, App::new());
+    let settings = settings::load().unwrap();
+    let app_result = run(
+        &mut terminal,
+        App::new(!settings::exists(), settings),
+    );
     ratatui::restore();
     app_result
-}
-
-#[cfg(feature = "encryption")]
-fn enc(args: Args) -> Result<()> {
-    if args.reset {
-        handle_json::reset()?;
-        auth::generate_key();
-    }
-    if args.generate_key {
-        auth::generate_key();
-    }
-    Ok(())
 }
 
 fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {

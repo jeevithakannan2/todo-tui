@@ -3,9 +3,6 @@ name = "todo-tui"
 version = "0.3.0"
 edition = "2024"
 
-[features]
-encryption = ["aes-gcm", "rand", "clap"]
-
 [dependencies]
 chrono = "0.4.40"
 directories = "6.0.0"
@@ -15,10 +12,9 @@ serde_json = "1.0.138"
 tui-markdown = "0.3.3"
 tui-textarea = "0.7.0"
 uuid = { version = "1.16.0", features = ["v7"] }
-
-aes-gcm = { version = "0.10.3", optional = true }
-rand = { version = "0.8", optional = true }
-clap = { version = "4.5.32", features = ["derive"], optional = true }
+aes-gcm = { version = "0.10.3" }
+rand = { version = "0.8" }
+clap = { version = "4.5.32", features = ["derive"] }
 
 [profile.release]
 lto = "fat"

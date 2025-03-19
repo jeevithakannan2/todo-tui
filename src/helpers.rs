@@ -1,3 +1,4 @@
+use directories::ProjectDirs;
 use ratatui::{
     layout::Flex,
     prelude::*,
@@ -35,4 +36,8 @@ pub fn rounded_block(title: &str, border_style: Style) -> Block {
         .title(title.reset().bold())
         .border_type(BorderType::Rounded)
         .border_style(border_style)
+}
+
+pub fn get_project_dir() -> ProjectDirs {
+    ProjectDirs::from("com", "CodeTrenchers", "TodoTUI").unwrap()
 }

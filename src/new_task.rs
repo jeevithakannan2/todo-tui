@@ -1,4 +1,4 @@
-use crate::{app::RED_STYLE, handle_json::Task};
+use crate::{app::RED_STYLE, tasks::Task};
 use chrono::NaiveDate;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
