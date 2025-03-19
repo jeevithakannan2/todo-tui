@@ -85,13 +85,20 @@ pub const SELECTION_STYLE: Style = Style::new().fg(Color::Rgb(249, 226, 175));
 
 impl Widget for &mut App<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
+        let footer_text: Line = self.get_footer_text().into();
+        let footer_height = (1 + footer_text.width().try_into().unwrap_or(0) / area.width).min(3);
+
+        let [main_area, footer_area] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(footer_height)]).areas(area);
+
         match self.focus {
             AppFocus::FirstTimeSetup => {
                 self.render_first_time_setup(area, buf);
                 return;
             }
             AppFocus::EditSettings => {
-                self.edit_settings.render(area, buf);
+                self.edit_settings.render(main_area, buf);
+                self.render_footer(footer_area, buf, footer_text);
                 return;
             }
             _ => {}
@@ -102,12 +109,6 @@ impl Widget for &mut App<'_> {
         } else if self.right_area != RightArea::EditTask {
             self.right_area = RightArea::Preview
         }
-
-        let footer_text: Line = self.get_footer_text().into();
-        let footer_height = (1 + footer_text.width().try_into().unwrap_or(0) / area.width).min(3);
-
-        let [main_area, footer_area] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Length(footer_height)]).areas(area);
 
         self.render_footer(footer_area, buf, footer_text);
 
@@ -645,8 +646,14 @@ impl App<'_> {
                 footer_text.push("[Tab] Exit Search");
             }
             AppFocus::EditSettings => {
-                footer_text.push("[q] Save Settings");
+                let selection = if self.theme == Theme::Default {
+                    "[ ] Select option"
+                } else {
+                    "[Left/Right] Select option"
+                };
                 footer_text.push(arrows);
+                footer_text.push(selection);
+                footer_text.push("[q | Enter] Save Settings");
             }
         }
         footer_text.join(" | ")
