@@ -9,20 +9,17 @@ mod app;
 mod auth;
 mod cli;
 mod confirm;
-mod tasks;
 mod helpers;
 mod new_task;
 mod settings;
+mod tasks;
 mod theme;
 
 fn main() -> Result<()> {
     cli::handle_arguments()?;
     let mut terminal = ratatui::init();
     let settings = settings::load().unwrap();
-    let app_result = run(
-        &mut terminal,
-        App::new(!settings::exists(), settings),
-    );
+    let app_result = run(&mut terminal, App::new(!settings::exists(), settings));
     ratatui::restore();
     app_result
 }
