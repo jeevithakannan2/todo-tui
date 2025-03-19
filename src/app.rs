@@ -1,9 +1,3 @@
-use crate::{
-    handle_json::Task,
-    helpers::{PopupSize, rounded_block},
-    new_task,
-    theme::Theme,
-};
 use chrono::NaiveDate;
 use new_task::NewTask;
 use ratatui::{
@@ -14,11 +8,13 @@ use ratatui::{
 use std::collections::BTreeMap;
 use tui_textarea::TextArea;
 
-#[cfg(feature = "encryption")]
-use crate::handle_json::{load_tasks_encrypted, save_tasks_ecrypted};
-
-#[cfg(not(feature = "encryption"))]
-use crate::handle_json::{load_tasks, save_tasks};
+use crate::{
+    helpers::{PopupSize, rounded_block},
+    new_task,
+    settings::{EditSettings, Settings},
+    tasks::Task,
+    theme::Theme,
+};
 
 pub struct App<'a> {
     /// Selected theme
@@ -33,16 +29,20 @@ pub struct App<'a> {
     new_task_save: Option<NewTask<'a>>,
     /// Used to determine which part of the app is currently in focus
     focus: AppFocus,
-    /// The last selected index of the task list before clearing the selection
-    last_selected: Option<TableState>,
+    /// The last selected state of the task list before clearing the selection
+    state_save: Option<TableState>,
     /// The state of the task list
-    current_selection: TableState,
+    state: TableState,
     /// Total rows in the table
     total: usize,
     /// Preview scroll state vertical and horizontal
     preview_scroll: (u16, u16),
     /// Search text area state
     search: TextArea<'a>,
+    /// Settings state
+    settings: Settings,
+    /// Edit settings state
+    edit_settings: EditSettings,
 }
 
 /// State of the tasks
@@ -52,7 +52,7 @@ struct Tasks {
     /// Grouped tasks by date ( saved in state to prevent the creation of a new map every render )
     grouped: BTreeMap<NaiveDate, Vec<Task>>,
     /// Selectable indexes of tasks ( Excludes date headers ) Vec <(row index, task id)>
-    selectable: Vec<(usize, u16)>,
+    selectable: Vec<(usize, u128)>,
 }
 
 #[derive(PartialEq)]
@@ -68,6 +68,8 @@ enum AppFocus {
     RightArea,
     DeletePrompt,
     Search,
+    FirstTimeSetup,
+    EditSettings,
 }
 
 enum ScrollDirection {
@@ -83,7 +85,19 @@ pub const SELECTION_STYLE: Style = Style::new().fg(Color::Rgb(249, 226, 175));
 
 impl Widget for &mut App<'_> {
     fn render(self, area: Rect, buf: &mut Buffer) {
-        if self.current_selection.selected().is_none() {
+        match self.focus {
+            AppFocus::FirstTimeSetup => {
+                self.render_first_time_setup(area, buf);
+                return;
+            }
+            AppFocus::EditSettings => {
+                self.edit_settings.render(area, buf);
+                return;
+            }
+            _ => {}
+        }
+
+        if self.state.selected().is_none() {
             self.right_area = RightArea::NewTask
         } else if self.right_area != RightArea::EditTask {
             self.right_area = RightArea::Preview
@@ -130,21 +144,28 @@ impl Widget for &mut App<'_> {
 }
 
 impl App<'_> {
-    pub fn new() -> Self {
-        #[cfg(feature = "encryption")]
-        let tasks = load_tasks_encrypted().unwrap_or_else(|_| Vec::new());
-        #[cfg(not(feature = "encryption"))]
-        let tasks = load_tasks().unwrap_or_else(|_| Vec::new());
+    pub fn new(new: bool, settings: Settings) -> Self {
+        let tasks = if settings.options[0].value {
+            crate::tasks::load_encrypted().unwrap_or_else(|_| Vec::new())
+        } else {
+            crate::tasks::load().unwrap_or_else(|_| Vec::new())
+        };
         let group = Self::group_date_tasks(&tasks);
 
         let mut text_area = TextArea::default();
-        text_area.set_placeholder_text("/ to search");
+        text_area.set_placeholder_text("Press / to search");
         text_area.set_cursor_line_style(Style::default());
 
+        let focus = if new {
+            AppFocus::FirstTimeSetup
+        } else {
+            AppFocus::LeftArea
+        };
+
         Self {
-            focus: AppFocus::LeftArea,
-            last_selected: None,
-            current_selection: TableState::default(),
+            focus,
+            state_save: None,
+            state: TableState::default(),
             total: group.2,
             preview_scroll: (0, 0),
             theme: Theme::Default,
@@ -157,7 +178,18 @@ impl App<'_> {
             new_task_save: None,
             right_area: RightArea::NewTask,
             search: text_area,
+            edit_settings: EditSettings::new(&settings),
+            settings,
         }
+    }
+
+    fn render_first_time_setup(&self, area: Rect, buf: &mut Buffer) {
+        crate::confirm::Confirm::new(
+            " Welcome to TodoTUI ".into(),
+            "This is a one time setup. \n Would you like to enable encryption?".into(),
+            PopupSize::Percentage { x: 25, y: 15 },
+        )
+        .render(area, buf);
     }
 
     fn get_filtered_tasks(&self) -> Vec<Task> {
@@ -214,13 +246,13 @@ impl App<'_> {
 
     fn group_date_tasks(
         tasks: &[Task],
-    ) -> (Vec<(usize, u16)>, BTreeMap<NaiveDate, Vec<Task>>, usize) {
+    ) -> (Vec<(usize, u128)>, BTreeMap<NaiveDate, Vec<Task>>, usize) {
         let mut grouped_tasks: BTreeMap<NaiveDate, Vec<Task>> = BTreeMap::new();
         for task in tasks {
             let date = NaiveDate::parse_from_str(&task.date, "%Y-%m-%d").unwrap();
             grouped_tasks.entry(date).or_default().push(task.clone());
         }
-        let mut selectable: Vec<(usize, u16)> = Vec::new();
+        let mut selectable: Vec<(usize, u128)> = Vec::new();
         let mut idx = 0;
         for (_, tasks) in &grouped_tasks {
             idx += 1;
@@ -278,7 +310,7 @@ impl App<'_> {
             .block(block)
             .row_highlight_style(SELECTION_STYLE);
 
-        StatefulWidget::render(table, area, buf, &mut self.current_selection);
+        StatefulWidget::render(table, area, buf, &mut self.state);
     }
 
     fn render_preview(&mut self, area: Rect, buf: &mut Buffer) {
@@ -319,6 +351,10 @@ impl App<'_> {
                     if self.right_area != RightArea::Preview {
                         self.new_task.quit = false;
                     }
+                }
+                KeyCode::Char('s') => {
+                    self.edit_settings = EditSettings::new(&self.settings);
+                    self.focus = AppFocus::EditSettings;
                 }
                 KeyCode::Down => self.scroll(ScrollDirection::Down),
                 KeyCode::Up => self.scroll(ScrollDirection::Up),
@@ -362,7 +398,7 @@ impl App<'_> {
                         }
                         self.save_new_task_state();
                         self.focus = AppFocus::LeftArea;
-                        self.current_selection.select(None);
+                        self.state.select(None);
                     }
                 } else {
                     match key.code {
@@ -392,11 +428,42 @@ impl App<'_> {
                     self.tasks.selectable = group.0;
                     self.tasks.grouped = group.1;
                     self.total = group.2;
-                    self.current_selection.select(None);
+                    self.state.select(None);
                 }
             },
+            AppFocus::FirstTimeSetup => match key.code {
+                KeyCode::Char('y') => {
+                    self.settings.options[0].value = true;
+                    crate::settings::save(&self.settings).unwrap();
+                    crate::auth::generate_key();
+                    self.update_task_list();
+                    self.focus = AppFocus::LeftArea;
+                }
+                KeyCode::Char('n') => {
+                    crate::settings::save(&self.settings).unwrap();
+                    self.focus = AppFocus::LeftArea;
+                }
+
+                _ => {}
+            },
+            AppFocus::EditSettings => {
+                if self.edit_settings.handle_key(key) {
+                    self.settings = self.edit_settings.get_settings().clone();
+                    crate::settings::save(&self.settings).unwrap();
+                    self.process_new_settings();
+                    self.focus = AppFocus::LeftArea;
+                }
+            }
         }
         false
+    }
+
+    fn process_new_settings(&self) {
+        if self.settings.options[0].value {
+            crate::tasks::save_encrypted(&self.tasks.list).unwrap();
+        } else {
+            crate::tasks::save(&self.tasks.list).unwrap();
+        }
     }
 
     fn add_or_modify_task(&mut self) {
@@ -420,7 +487,7 @@ impl App<'_> {
     }
 
     fn get_selected(&self) -> Option<Task> {
-        self.current_selection
+        self.state
             .selected()
             .and_then(|index| self.tasks.selectable.iter().find(|(i, _)| *i == index))
             .and_then(|(_, id)| self.tasks.list.iter().find(|t| t.id == *id))
@@ -428,15 +495,15 @@ impl App<'_> {
     }
 
     fn get_selected_mut(&mut self) -> Option<&mut Task> {
-        self.current_selection
+        self.state
             .selected()
             .and_then(|index| self.tasks.selectable.iter().find(|(i, _)| *i == index))
             .and_then(|(_, id)| self.tasks.list.iter_mut().find(|t| t.id == *id))
     }
 
     fn select_last_selected(&mut self) -> bool {
-        if let Some(old_selection) = self.last_selected.take() {
-            self.current_selection = old_selection;
+        if let Some(old_selection) = self.state_save.take() {
+            self.state = old_selection;
             return true;
         }
         false
@@ -463,7 +530,7 @@ impl App<'_> {
         if self.select_last_selected() {
             return;
         }
-        let index = match self.current_selection.selected() {
+        let index = match self.state.selected() {
             Some(index) => index,
             None => 0,
         };
@@ -489,7 +556,7 @@ impl App<'_> {
             }
         }
 
-        self.current_selection.select(Some(next));
+        self.state.select(Some(next));
 
         if self.right_area == RightArea::EditTask {
             self.new_task = NewTask::from(self.get_selected().unwrap());
@@ -497,8 +564,8 @@ impl App<'_> {
     }
 
     fn select_none(&mut self) {
-        self.last_selected = Some(self.current_selection.clone());
-        self.current_selection.select(None);
+        self.state_save = Some(self.state.clone());
+        self.state.select(None);
     }
 
     fn update_task_list(&mut self) {
@@ -506,10 +573,11 @@ impl App<'_> {
         self.tasks.selectable = grouped_tasks.0;
         self.tasks.grouped = grouped_tasks.1;
         self.total = grouped_tasks.2;
-        #[cfg(feature = "encryption")]
-        save_tasks_ecrypted(&self.tasks.list).unwrap();
-        #[cfg(not(feature = "encryption"))]
-        save_tasks(&self.tasks.list).unwrap();
+        if self.settings.options[0].value {
+            crate::tasks::save_encrypted(&self.tasks.list).unwrap();
+        } else {
+            crate::tasks::save(&self.tasks.list).unwrap();
+        }
     }
 
     fn toggle_completed(&mut self) {
@@ -523,7 +591,7 @@ impl App<'_> {
         if let Some(task) = self.get_selected() {
             self.tasks.list.retain(|t| t.id != task.id);
             self.update_task_list();
-            if let Some(_) = self.current_selection.selected() {
+            if let Some(_) = self.state.selected() {
                 self.scroll(ScrollDirection::Down);
             }
         }
@@ -540,7 +608,7 @@ impl App<'_> {
         match self.focus {
             AppFocus::LeftArea => {
                 footer_text.push(arrows);
-                if self.current_selection.selected().is_some() {
+                if self.state.selected().is_some() {
                     footer_text.extend_from_slice(&[
                         "[e] Edit Task",
                         "[d] Delete Task",
@@ -549,9 +617,7 @@ impl App<'_> {
                 }
                 footer_text.push("[n] New Task");
                 footer_text.push("[t] Compatibility Mode");
-                if self.right_area != RightArea::Preview
-                    && self.current_selection.selected().is_some()
-                {
+                if self.right_area != RightArea::Preview && self.state.selected().is_some() {
                     footer_text.push("[p] Preview");
                 }
                 let title = match self.right_area {
@@ -560,6 +626,7 @@ impl App<'_> {
                     RightArea::Preview => "[Tab] Focus Preview",
                 };
                 footer_text.push(title);
+                footer_text.push("[s] Settings");
                 footer_text.push("[q] Quit");
             }
             AppFocus::RightArea => {
@@ -569,11 +636,17 @@ impl App<'_> {
                     footer_text.extend_from_slice(&[arrows, "[Tab] Focus Tasks", "[q] Quit"]);
                 }
             }
-            AppFocus::DeletePrompt => footer_text = crate::confirm::get_footer_text(),
+            AppFocus::DeletePrompt | AppFocus::FirstTimeSetup => {
+                footer_text = crate::confirm::get_footer_text()
+            }
             AppFocus::Search => {
                 footer_text.push("[Esc] Exit Search");
                 footer_text.push("[Enter] Exit Search");
                 footer_text.push("[Tab] Exit Search");
+            }
+            AppFocus::EditSettings => {
+                footer_text.push("[q] Save Settings");
+                footer_text.push(arrows);
             }
         }
         footer_text.join(" | ")

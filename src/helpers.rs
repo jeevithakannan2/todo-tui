@@ -1,3 +1,4 @@
+use directories::ProjectDirs;
 use ratatui::{
     layout::Flex,
     prelude::*,
@@ -5,15 +6,7 @@ use ratatui::{
 };
 
 pub enum PopupSize {
-    Percentage {
-        x: u16,
-        y: u16,
-    },
-    #[cfg(feature = "encryption")]
-    FixedHeight {
-        x: u16,
-        height: u16,
-    },
+    Percentage { x: u16, y: u16 },
 }
 
 impl PopupSize {
@@ -21,10 +14,6 @@ impl PopupSize {
         match *self {
             PopupSize::Percentage { x, y } => {
                 ([Constraint::Percentage(x)], [Constraint::Percentage(y)])
-            }
-            #[cfg(feature = "encryption")]
-            PopupSize::FixedHeight { x, height } => {
-                ([Constraint::Percentage(x)], [Constraint::Length(height)])
             }
         }
     }
@@ -47,4 +36,8 @@ pub fn rounded_block(title: &str, border_style: Style) -> Block {
         .title(title.reset().bold())
         .border_type(BorderType::Rounded)
         .border_style(border_style)
+}
+
+pub fn get_project_dir() -> ProjectDirs {
+    ProjectDirs::from("com", "CodeTrenchers", "TodoTUI").unwrap()
 }
