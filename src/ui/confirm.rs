@@ -9,9 +9,9 @@ use crate::{
 };
 
 pub struct Confirm {
-    pub title: String,
-    pub body: String,
-    pub popup_size: PopupSize,
+    title: String,
+    body: String,
+    popup_size: PopupSize,
 }
 
 impl Widget for Confirm {
