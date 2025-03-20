@@ -2,6 +2,11 @@ use clap::Parser;
 use std::io::Result;
 
 #[derive(Parser)]
+#[clap(
+    version,
+    name = "todotui",
+    about = "A terminal-based todo list manager"
+)]
 pub struct Args {
     /// Delete all tasks and create a new encyption key ( Use this if you forgot your key ).
     #[arg(short, long)]

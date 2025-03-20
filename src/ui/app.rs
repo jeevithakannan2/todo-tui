@@ -17,40 +17,24 @@ use crate::{
 use super::{NewTask, OverDue};
 
 pub struct App<'a> {
-    /// Selected theme
     theme: Theme,
-    /// State of the Tasks
     tasks: Tasks,
-    /// Display the new task or preview
     right_area: RightArea,
-    /// The state of the new task
     new_task: NewTask<'a>,
-    /// Save of the new task state
     new_task_save: Option<NewTask<'a>>,
-    /// Used to determine which part of the app is currently in focus
     focus: AppFocus,
-    /// The last selected state of the task list before clearing the selection
     state_save: Option<TableState>,
-    /// The state of the task list
     state: TableState,
-    /// Total rows in the table
     total: usize,
-    /// Preview scroll state vertical and horizontal
     preview_scroll: (u16, u16),
-    /// Search text area state
     search: TextArea<'a>,
-    /// Loaded config
     config: Config,
-    /// State of over due tasks
     over_due: OverDue,
 }
 
 struct Tasks {
-    /// The list of tasks in json
     list: Vec<Task>,
-    /// Grouped tasks by date ( saved in state to prevent the creation of a new map every render )
     grouped: BTreeMap<NaiveDate, Vec<Task>>,
-    /// Selectable indexes of tasks ( Excludes date headers ) Vec <(row index, task id)>
     selectable: Vec<(usize, u128)>,
 }
 
