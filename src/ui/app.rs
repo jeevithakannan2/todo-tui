@@ -74,20 +74,19 @@ impl App<'_> {
         } else {
             crate::tasks::load().unwrap_or_else(|_| Vec::new())
         };
-        let mut group = Self::group_date_tasks(&tasks);
+        let group = Self::group_date_tasks(&tasks);
 
         let mut text_area = TextArea::default();
         text_area.set_placeholder_text("Press / to search");
         text_area.set_cursor_line_style(Style::default());
 
-        let first_entry = group.1.first_entry();
-        let first_date = first_entry.map(|entry| *entry.key()).unwrap_or_default();
+        let overdue_tasks = OverDue::get_tasks(&tasks);
 
         let focus = if new {
             AppFocus::FirstTimeSetup
         } else if tasks.is_empty() {
             AppFocus::RightArea
-        } else if first_date < chrono::Local::now().naive_local().date() {
+        } else if !overdue_tasks.is_empty() {
             AppFocus::OverDue
         } else {
             AppFocus::LeftArea
@@ -100,7 +99,7 @@ impl App<'_> {
             total: group.2,
             preview_scroll: (0, 0),
             theme: Theme::Default,
-            over_due: OverDue::new(&tasks),
+            over_due: OverDue::new(overdue_tasks),
             tasks: Tasks {
                 list: tasks,
                 grouped: group.1,
@@ -123,7 +122,8 @@ impl App<'_> {
         }
 
         let footer_text: Line = self.get_footer_text().into();
-        let footer_height = (1 + footer_text.width().try_into().unwrap_or(0) / area.width).min(3);
+        let footer_height =
+            (1 + footer_text.width().try_into().unwrap_or(0) / (area.width + 1)).min(3);
 
         let [main_area, footer_area] =
             Layout::vertical([Constraint::Fill(1), Constraint::Length(footer_height)]).areas(area);
@@ -131,11 +131,11 @@ impl App<'_> {
         let [left_area, right_area] =
             Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
                 .areas(main_area);
-        
+
         // Left area
         let [search_area, list_area] =
             Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).areas(left_area);
-        
+
         // Render Search
         let border_style = self.get_border_style(AppFocus::Search);
         let cursor_style = if border_style == PRIMARY_STYLE {
