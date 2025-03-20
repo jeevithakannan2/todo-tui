@@ -188,7 +188,7 @@ impl App<'_> {
         crate::ui::Confirm::new(
             " Welcome to TodoTUI ".into(),
             "This is a one time setup. \n Would you like to enable encryption?".into(),
-            PopupSize::Percentage { x: 25, y: 15 },
+            PopupSize::Percentage { x: 50, y: 50 },
         )
         .render(area, buf);
     }
