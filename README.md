@@ -15,6 +15,18 @@ curl -fLO https://github.com/jeevithakannan2/todo-tui/releases/latest/download/t
 Invoke-WebRequest -Uri "https://github.com/jeevithakannan2/todo-tui/releases/latest/download/todo-tui.exe" -OutFile "todo-tui.exe"
 Start-Process -FilePath .\todo-tui.exe
 ```
+### Configuration
+TodoTUI supports TOML configuration. 
+
+The configuration file can be found in `$HOME/.config/todotui/config.toml` for linux users
+
+`C:\Users\user\AppData\Roaming\CodeTrenchers\TodoTUI\config\config.toml` for windows users
+
+To turn on **Encryption** set
+```toml
+# config.toml
+encryption = true
+```
 
 ## 💖 Support
 
