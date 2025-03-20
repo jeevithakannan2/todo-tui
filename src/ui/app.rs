@@ -1,6 +1,6 @@
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use ratatui::{
-    crossterm::event::{KeyCode, KeyEvent},
+    crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     prelude::*,
     widgets::{Cell, Paragraph, Row, Table, TableState, Wrap},
 };
@@ -68,6 +68,7 @@ enum AppFocus {
     DeletePrompt,
     Search,
     FirstTimeSetup,
+    ToggleEnc,
     OverDue,
 }
 
@@ -130,6 +131,25 @@ impl Widget for &mut App<'_> {
                 crate::ui::Confirm::new(
                     " Delete Task ".into(),
                     "Delete the selected task?".into(),
+                    PopupSize::Percentage { x: 20, y: 15 },
+                )
+                .render(main_area, buf);
+            }
+            AppFocus::ToggleEnc => {
+                let (title, body) = if self.config.encryption {
+                    (
+                        " Disable Encryption ",
+                        "Would you like to disable encryption?",
+                    )
+                } else {
+                    (
+                        " Enable Encryption ",
+                        "Would you like to enable encryption?",
+                    )
+                };
+                crate::ui::Confirm::new(
+                    title.into(),
+                    body.into(),
                     PopupSize::Percentage { x: 20, y: 15 },
                 )
                 .render(main_area, buf);
@@ -380,6 +400,10 @@ impl App<'_> {
                     }
                 }
                 KeyCode::Char('e') => {
+                    if key.modifiers.contains(KeyModifiers::CONTROL) {
+                        self.focus = AppFocus::ToggleEnc;
+                        return false;
+                    }
                     if let Some(task) = self.get_selected() {
                         self.new_task = NewTask::from(task);
                         self.focus = AppFocus::RightArea;
@@ -414,7 +438,6 @@ impl App<'_> {
                             self.select_last_selected();
                         }
                         self.focus = AppFocus::LeftArea;
-
                     }
                 } else {
                     match key.code {
@@ -467,6 +490,15 @@ impl App<'_> {
                     self.focus = AppFocus::LeftArea;
                 }
             }
+            AppFocus::ToggleEnc => match key.code {
+                KeyCode::Char('y') => {
+                    self.config.encryption = !self.config.encryption;
+                    self.config.save();
+                    self.focus = AppFocus::LeftArea
+                }
+                KeyCode::Char('n') => self.focus = AppFocus::LeftArea,
+                _ => {}
+            },
         }
         false
     }
@@ -637,7 +669,12 @@ impl App<'_> {
                     RightArea::NewTask => "[Tab] Focus New Task",
                     RightArea::Preview => "[Tab] Focus Preview",
                 };
-                footer_text.extend_from_slice(&[title, "[s] Settings", "[q] Quit"]);
+                let enc = if self.config.encryption {
+                    "[C-e] Disable Encryption"
+                } else {
+                    "[C-e] Enable Encryption"
+                };
+                footer_text.extend_from_slice(&[title, enc, "[q] Quit"]);
             }
             AppFocus::RightArea => {
                 if self.right_area != RightArea::Preview {
@@ -646,7 +683,7 @@ impl App<'_> {
                     footer_text.extend_from_slice(&[arrows, "[Tab] Focus Tasks", "[q] Quit"]);
                 }
             }
-            AppFocus::DeletePrompt | AppFocus::FirstTimeSetup => {
+            AppFocus::DeletePrompt | AppFocus::FirstTimeSetup | AppFocus::ToggleEnc => {
                 footer_text.extend_from_slice(&["[y] Yes", "[n] No"]);
             }
             AppFocus::Search => {
