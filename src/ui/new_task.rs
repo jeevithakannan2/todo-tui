@@ -108,8 +108,8 @@ impl Widgets<'_> {
 
         let titles = [
             (" Title ", "Enter your task title"),
-            (" Date - (DD-MM-YYYY) ", "Enter your task date"),
-            (" Time - (HH:MM) ", "Enter your estimated completion time"),
+            (" Date - (DD MM YYYY) ", "Enter your task date"),
+            (" Time - (HH MM) ", "Enter your estimated completion time"),
             (" Description ", "Enter your task description"),
         ];
 
@@ -156,7 +156,7 @@ impl NewTask<'_> {
 
     fn render_time(&mut self, area: Rect, buf: &mut Buffer) {
         let time_val = self.widgets.time.lines()[0].to_string();
-        let time = NaiveTime::parse_from_str(&time_val, "%H:%M");
+        let time = NaiveTime::parse_from_str(&time_val, "%H %M");
         let style = match time {
             Ok(_) => Style::default(),
             Err(_) => RED_STYLE,
@@ -167,7 +167,7 @@ impl NewTask<'_> {
 
     fn render_date(&mut self, area: Rect, buf: &mut Buffer) {
         let date_val = self.widgets.date.lines()[0].to_string();
-        let date = NaiveDate::parse_from_str(&date_val, "%d-%m-%Y");
+        let date = NaiveDate::parse_from_str(&date_val, "%d %m %Y");
         let style = match date {
             Ok(_) => Style::default(),
             Err(_) => RED_STYLE,

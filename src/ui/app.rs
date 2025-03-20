@@ -172,7 +172,7 @@ impl App<'_> {
             // Add tasks under the date
             for (i, task) in tasks.iter().enumerate() {
                 let title = task.title.as_str();
-                let time = NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap_or(now.time());
+                let time = NaiveTime::parse_from_str(&task.time, "%H %M").unwrap_or(now.time());
                 let date_time = NaiveDateTime::new(*date, time);
 
                 let (icon, style) = if task.completed {
@@ -304,13 +304,13 @@ impl App<'_> {
     ) -> (Vec<(usize, u128)>, BTreeMap<NaiveDate, Vec<Task>>, usize) {
         let mut grouped_tasks: BTreeMap<NaiveDate, Vec<Task>> = BTreeMap::new();
         for task in tasks {
-            let date = NaiveDate::parse_from_str(&task.date, "%d-%m-%Y").unwrap();
+            let date = NaiveDate::parse_from_str(&task.date, "%d %m %Y").unwrap();
             grouped_tasks.entry(date).or_default().push(task.clone());
         }
 
         // Sort by time
         for (_, task_list) in grouped_tasks.iter_mut() {
-            task_list.sort_by_key(|task| NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap());
+            task_list.sort_by_key(|task| NaiveTime::parse_from_str(&task.time, "%H %M").unwrap());
         }
 
         let mut selectable: Vec<(usize, u128)> = Vec::new();

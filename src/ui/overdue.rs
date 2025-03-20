@@ -23,8 +23,8 @@ impl Widget for &mut OverDue {
         let now = chrono::Local::now().naive_local();
         for task in &self.tasks {
             let title = task.title.as_str();
-            let time = NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap_or(now.time());
-            let time = time.format("%H:%M").to_string();
+            let time = NaiveTime::parse_from_str(&task.time, "%H %M").unwrap_or(now.time());
+            let time = time.format("%H %M").to_string();
             let row = Row::new(vec![
                 Cell::from(title),
                 Cell::from(task.date.as_str()),
@@ -64,8 +64,8 @@ impl OverDue {
         let mut tasks: Vec<Task> = tasks
             .iter()
             .filter(|task| {
-                let date = NaiveDate::parse_from_str(&task.date, "%d-%m-%Y").unwrap();
-                let time = NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap_or(now.time());
+                let date = NaiveDate::parse_from_str(&task.date, "%d %m %Y").unwrap();
+                let time = NaiveTime::parse_from_str(&task.time, "%H %M").unwrap_or(now.time());
                 date < now.date() || (date == now.date() && time < now.time())
             })
             .cloned()
@@ -73,7 +73,7 @@ impl OverDue {
         tasks.sort_by_key(|task| {
             NaiveDateTime::parse_from_str(
                 format!("{} {}", task.time, task.date).as_str(),
-                "%H:%M %d-%m-%Y",
+                "%H %M %d %m %Y",
             )
             .unwrap()
         });
