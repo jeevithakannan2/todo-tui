@@ -8,18 +8,18 @@ use std::io::Result;
 mod app;
 mod auth;
 mod cli;
+mod config;
 mod confirm;
 mod helpers;
 mod new_task;
-mod settings;
 mod tasks;
 mod theme;
 
 fn main() -> Result<()> {
     cli::handle_arguments()?;
     let mut terminal = ratatui::init();
-    let settings = settings::load().unwrap();
-    let app_result = run(&mut terminal, App::new(!settings::exists(), settings));
+    let config = crate::config::Config::load();
+    let app_result = run(&mut terminal, App::new(!config.exists(), config));
     ratatui::restore();
     app_result
 }

@@ -9,9 +9,9 @@ use std::collections::BTreeMap;
 use tui_textarea::TextArea;
 
 use crate::{
+    config::Config,
     helpers::{PopupSize, rounded_block},
     new_task,
-    settings::{EditSettings, Settings},
     tasks::Task,
     theme::Theme,
 };
@@ -39,10 +39,8 @@ pub struct App<'a> {
     preview_scroll: (u16, u16),
     /// Search text area state
     search: TextArea<'a>,
-    /// Settings state
-    settings: Settings,
-    /// Edit settings state
-    edit_settings: EditSettings,
+    /// Loaded config
+    config: Config,
     /// State of over due tasks
     over_due: OverDue,
 }
@@ -77,7 +75,6 @@ enum AppFocus {
     DeletePrompt,
     Search,
     FirstTimeSetup,
-    EditSettings,
     OverDue,
 }
 
@@ -100,17 +97,9 @@ impl Widget for &mut App<'_> {
         let [main_area, footer_area] =
             Layout::vertical([Constraint::Fill(1), Constraint::Length(footer_height)]).areas(area);
 
-        match self.focus {
-            AppFocus::FirstTimeSetup => {
-                self.render_first_time_setup(area, buf);
-                return;
-            }
-            AppFocus::EditSettings => {
-                self.edit_settings.render(main_area, buf);
-                self.render_footer(footer_area, buf, footer_text);
-                return;
-            }
-            _ => {}
+        if self.focus == AppFocus::FirstTimeSetup {
+            self.render_first_time_setup(area, buf);
+            return;
         }
 
         if self.state.selected().is_none() {
@@ -218,8 +207,8 @@ impl OverDue {
 }
 
 impl App<'_> {
-    pub fn new(new: bool, settings: Settings) -> Self {
-        let tasks = if settings.options[0].value {
+    pub fn new(new: bool, config: Config) -> Self {
+        let tasks = if config.encryption {
             crate::tasks::load_encrypted().unwrap_or_else(|_| Vec::new())
         } else {
             crate::tasks::load().unwrap_or_else(|_| Vec::new())
@@ -258,8 +247,7 @@ impl App<'_> {
             new_task_save: None,
             right_area: RightArea::NewTask,
             search: text_area,
-            edit_settings: EditSettings::new(&settings),
-            settings,
+            config,
             over_due: OverDue {
                 state: TableState::default(),
                 tasks: overdue_tasks,
@@ -452,10 +440,6 @@ impl App<'_> {
                         self.new_task.quit = false;
                     }
                 }
-                KeyCode::Char('s') => {
-                    self.edit_settings = EditSettings::new(&self.settings);
-                    self.focus = AppFocus::EditSettings;
-                }
                 KeyCode::Down => self.scroll(ScrollDirection::Down),
                 KeyCode::Up => self.scroll(ScrollDirection::Up),
                 KeyCode::Esc => self.select_none(),
@@ -533,27 +517,19 @@ impl App<'_> {
             },
             AppFocus::FirstTimeSetup => match key.code {
                 KeyCode::Char('y') => {
-                    self.settings.options[0].value = true;
-                    crate::settings::save(&self.settings).unwrap();
+                    self.config.encryption = true;
+                    self.config.save();
                     crate::auth::generate_key();
                     self.update_task_list();
                     self.focus = AppFocus::LeftArea;
                 }
                 KeyCode::Char('n') => {
-                    crate::settings::save(&self.settings).unwrap();
+                    self.config.save();
                     self.focus = AppFocus::LeftArea;
                 }
 
                 _ => {}
             },
-            AppFocus::EditSettings => {
-                if self.edit_settings.handle_key(key) {
-                    self.settings = self.edit_settings.get_settings().clone();
-                    crate::settings::save(&self.settings).unwrap();
-                    self.process_new_settings();
-                    self.focus = AppFocus::LeftArea;
-                }
-            }
             AppFocus::OverDue => match key.code {
                 KeyCode::Char('q') => self.focus = AppFocus::LeftArea,
                 KeyCode::Down => self.over_due.state.select_next(),
@@ -562,14 +538,6 @@ impl App<'_> {
             },
         }
         false
-    }
-
-    fn process_new_settings(&self) {
-        if self.settings.options[0].value {
-            crate::tasks::save_encrypted(&self.tasks.list).unwrap();
-        } else {
-            crate::tasks::save(&self.tasks.list).unwrap();
-        }
     }
 
     fn add_or_modify_task(&mut self) {
@@ -679,7 +647,7 @@ impl App<'_> {
         self.tasks.selectable = grouped_tasks.0;
         self.tasks.grouped = grouped_tasks.1;
         self.total = grouped_tasks.2;
-        if self.settings.options[0].value {
+        if self.config.encryption {
             crate::tasks::save_encrypted(&self.tasks.list).unwrap();
         } else {
             crate::tasks::save(&self.tasks.list).unwrap();
@@ -749,16 +717,6 @@ impl App<'_> {
                 footer_text.push("[Esc] Exit Search");
                 footer_text.push("[Enter] Exit Search");
                 footer_text.push("[Tab] Exit Search");
-            }
-            AppFocus::EditSettings => {
-                let selection = if self.theme == Theme::Default {
-                    "[ ] Select option"
-                } else {
-                    "[Left/Right] Select option"
-                };
-                footer_text.push(arrows);
-                footer_text.push(selection);
-                footer_text.push("[q | Enter] Save Settings");
             }
             AppFocus::OverDue => {
                 footer_text.push(arrows);
