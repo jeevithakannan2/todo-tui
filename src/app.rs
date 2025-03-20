@@ -1,9 +1,9 @@
-use chrono::{NaiveDate, NaiveTime};
+use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
 use new_task::NewTask;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
-    widgets::{Cell, Paragraph, Row, Table, TableState, Wrap},
+    widgets::{Cell, Clear, Paragraph, Row, Table, TableState, Wrap},
 };
 use std::collections::BTreeMap;
 use tui_textarea::TextArea;
@@ -43,6 +43,14 @@ pub struct App<'a> {
     settings: Settings,
     /// Edit settings state
     edit_settings: EditSettings,
+    /// State of over due tasks
+    over_due: OverDue,
+}
+
+/// State of over due tasks
+struct OverDue {
+    state: TableState,
+    tasks: Vec<Task>,
 }
 
 /// State of the tasks
@@ -70,6 +78,7 @@ enum AppFocus {
     Search,
     FirstTimeSetup,
     EditSettings,
+    OverDue,
 }
 
 enum ScrollDirection {
@@ -133,14 +142,78 @@ impl Widget for &mut App<'_> {
             self.new_task.render(right_area, buf);
         }
 
-        if self.focus == AppFocus::DeletePrompt {
-            crate::confirm::Confirm::new(
-                " Delete Task ".into(),
-                "Delete the selected task?".into(),
-                PopupSize::Percentage { x: 20, y: 15 },
-            )
-            .render(main_area, buf);
+        match self.focus {
+            AppFocus::OverDue => self.over_due.render(main_area, buf),
+            AppFocus::DeletePrompt => {
+                crate::confirm::Confirm::new(
+                    " Delete Task ".into(),
+                    "Delete the selected task?".into(),
+                    PopupSize::Percentage { x: 20, y: 15 },
+                )
+                .render(main_area, buf);
+            }
+            _ => {}
         }
+    }
+}
+
+impl Widget for &mut OverDue {
+    fn render(self, area: Rect, buf: &mut Buffer) {
+        let area = crate::helpers::create_popup_area(area, &PopupSize::Percentage { x: 50, y: 50 });
+        Clear.render(area, buf);
+        let block = crate::helpers::rounded_block(" Overdues ", PRIMARY_STYLE);
+        let mut rows: Vec<Row> = Vec::new();
+        let now = chrono::Local::now().naive_local();
+        for task in &self.tasks {
+            let title = task.title.as_str();
+            let time = NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap_or(now.time());
+            let time = time.format("%H:%M").to_string();
+            let row = Row::new(vec![
+                Cell::from(title),
+                Cell::from(task.date.as_str()),
+                Cell::from(time),
+            ]);
+            rows.push(row);
+        }
+        let headers = Row::new(vec!["Title", "Date", "Time"])
+            .style(Style::default().bold().reversed())
+            .bottom_margin(1);
+
+        let table = Table::new(
+            rows,
+            &[
+                Constraint::Percentage(50),
+                Constraint::Percentage(25),
+                Constraint::Percentage(25),
+            ],
+        )
+        .header(headers)
+        .row_highlight_style(SELECTION_STYLE)
+        .block(block);
+        StatefulWidget::render(table, area, buf, &mut self.state);
+    }
+}
+
+impl OverDue {
+    pub fn get_tasks(tasks: Vec<Task>) -> Vec<Task> {
+        let now = chrono::Local::now().naive_local();
+        let mut tasks: Vec<Task> = tasks
+            .iter()
+            .filter(|task| {
+                let date = NaiveDate::parse_from_str(&task.date, "%d-%m-%Y").unwrap();
+                let time = NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap_or(now.time());
+                date < now.date() || (date == now.date() && time < now.time())
+            })
+            .cloned()
+            .collect();
+        tasks.sort_by_key(|task| {
+            NaiveDateTime::parse_from_str(
+                format!("{} {}", task.time, task.date).as_str(),
+                "%H:%M %d-%m-%Y",
+            )
+            .unwrap()
+        });
+        tasks
     }
 }
 
@@ -151,14 +224,20 @@ impl App<'_> {
         } else {
             crate::tasks::load().unwrap_or_else(|_| Vec::new())
         };
-        let group = Self::group_date_tasks(&tasks);
+        let mut group = Self::group_date_tasks(&tasks);
+        let overdue_tasks = OverDue::get_tasks(tasks.clone());
 
         let mut text_area = TextArea::default();
         text_area.set_placeholder_text("Press / to search");
         text_area.set_cursor_line_style(Style::default());
 
+        let first_entry = group.1.first_entry();
+        let first_date = first_entry.map(|entry| *entry.key()).unwrap_or_default();
+
         let focus = if new {
             AppFocus::FirstTimeSetup
+        } else if first_date < chrono::Local::now().naive_local().date() {
+            AppFocus::OverDue
         } else {
             AppFocus::LeftArea
         };
@@ -181,6 +260,10 @@ impl App<'_> {
             search: text_area,
             edit_settings: EditSettings::new(&settings),
             settings,
+            over_due: OverDue {
+                state: TableState::default(),
+                tasks: overdue_tasks,
+            },
         }
     }
 
@@ -297,10 +380,11 @@ impl App<'_> {
             for (i, task) in tasks.iter().enumerate() {
                 let title = task.title.as_str();
                 let time = NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap_or(now.time());
+                let date_time = NaiveDateTime::new(*date, time);
 
                 let (icon, style) = if task.completed {
                     (self.theme.get_completed(), Style::default().dark_gray())
-                } else if time < now.time() && *date <= now.date() {
+                } else if date_time < now {
                     (self.theme.get_uncompleted(), Style::default().red().bold())
                 } else {
                     (self.theme.get_uncompleted(), Style::default().bold())
@@ -470,6 +554,12 @@ impl App<'_> {
                     self.focus = AppFocus::LeftArea;
                 }
             }
+            AppFocus::OverDue => match key.code {
+                KeyCode::Char('q') => self.focus = AppFocus::LeftArea,
+                KeyCode::Down => self.over_due.state.select_next(),
+                KeyCode::Up => self.over_due.state.select_previous(),
+                _ => {}
+            },
         }
         false
     }
@@ -669,6 +759,10 @@ impl App<'_> {
                 footer_text.push(arrows);
                 footer_text.push(selection);
                 footer_text.push("[q | Enter] Save Settings");
+            }
+            AppFocus::OverDue => {
+                footer_text.push(arrows);
+                footer_text.push("[q] Quit");
             }
         }
         footer_text.join(" | ")
