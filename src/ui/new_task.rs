@@ -1,4 +1,3 @@
-use crate::{app::RED_STYLE, tasks::Task};
 use chrono::{NaiveDate, NaiveTime};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
@@ -6,6 +5,10 @@ use ratatui::{
     widgets::{Block, BorderType, Clear},
 };
 use tui_textarea::{CursorMove, TextArea};
+
+use crate::tasks::Task;
+
+use super::RED_STYLE;
 
 #[derive(Clone)]
 pub struct NewTask<'a> {
@@ -208,7 +211,12 @@ impl NewTask<'_> {
     }
 
     fn set_cursor_style(&mut self) {
-        let mut cursor_styles = (Style::default(), Style::default(), Style::default(), Style::default());
+        let mut cursor_styles = (
+            Style::default(),
+            Style::default(),
+            Style::default(),
+            Style::default(),
+        );
         if self.mode == Mode::Insert {
             match self.focus {
                 Focus::Title => cursor_styles.0 = cursor_styles.0.reversed(),
@@ -278,8 +286,8 @@ impl NewTask<'_> {
         }
     }
 
-    pub fn get_task(&self) -> Task {
-        self.task.clone()
+    pub fn get_task(&self) -> &Task {
+        &self.task
     }
 
     pub fn footer_text(&self) -> Box<[&str]> {

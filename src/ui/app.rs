@@ -1,9 +1,8 @@
 use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
-use new_task::NewTask;
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
     prelude::*,
-    widgets::{Cell, Clear, Paragraph, Row, Table, TableState, Wrap},
+    widgets::{Cell, Paragraph, Row, Table, TableState, Wrap},
 };
 use std::collections::BTreeMap;
 use tui_textarea::TextArea;
@@ -11,10 +10,11 @@ use tui_textarea::TextArea;
 use crate::{
     config::Config,
     helpers::{PopupSize, rounded_block},
-    new_task,
     tasks::Task,
     theme::Theme,
 };
+
+use super::{NewTask, OverDue};
 
 pub struct App<'a> {
     /// Selected theme
@@ -45,13 +45,6 @@ pub struct App<'a> {
     over_due: OverDue,
 }
 
-/// State of over due tasks
-struct OverDue {
-    state: TableState,
-    tasks: Vec<Task>,
-}
-
-/// State of the tasks
 struct Tasks {
     /// The list of tasks in json
     list: Vec<Task>,
@@ -134,7 +127,7 @@ impl Widget for &mut App<'_> {
         match self.focus {
             AppFocus::OverDue => self.over_due.render(main_area, buf),
             AppFocus::DeletePrompt => {
-                crate::confirm::Confirm::new(
+                crate::ui::Confirm::new(
                     " Delete Task ".into(),
                     "Delete the selected task?".into(),
                     PopupSize::Percentage { x: 20, y: 15 },
@@ -146,66 +139,6 @@ impl Widget for &mut App<'_> {
     }
 }
 
-impl Widget for &mut OverDue {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let area = crate::helpers::create_popup_area(area, &PopupSize::Percentage { x: 50, y: 50 });
-        Clear.render(area, buf);
-        let block = crate::helpers::rounded_block(" Overdues ", PRIMARY_STYLE);
-        let mut rows: Vec<Row> = Vec::new();
-        let now = chrono::Local::now().naive_local();
-        for task in &self.tasks {
-            let title = task.title.as_str();
-            let time = NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap_or(now.time());
-            let time = time.format("%H:%M").to_string();
-            let row = Row::new(vec![
-                Cell::from(title),
-                Cell::from(task.date.as_str()),
-                Cell::from(time),
-            ]);
-            rows.push(row);
-        }
-        let headers = Row::new(vec!["Title", "Date", "Time"])
-            .style(Style::default().bold().reversed())
-            .bottom_margin(1);
-
-        let table = Table::new(
-            rows,
-            &[
-                Constraint::Percentage(50),
-                Constraint::Percentage(25),
-                Constraint::Percentage(25),
-            ],
-        )
-        .header(headers)
-        .row_highlight_style(SELECTION_STYLE)
-        .block(block);
-        StatefulWidget::render(table, area, buf, &mut self.state);
-    }
-}
-
-impl OverDue {
-    pub fn get_tasks(tasks: Vec<Task>) -> Vec<Task> {
-        let now = chrono::Local::now().naive_local();
-        let mut tasks: Vec<Task> = tasks
-            .iter()
-            .filter(|task| {
-                let date = NaiveDate::parse_from_str(&task.date, "%d-%m-%Y").unwrap();
-                let time = NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap_or(now.time());
-                date < now.date() || (date == now.date() && time < now.time())
-            })
-            .cloned()
-            .collect();
-        tasks.sort_by_key(|task| {
-            NaiveDateTime::parse_from_str(
-                format!("{} {}", task.time, task.date).as_str(),
-                "%H:%M %d-%m-%Y",
-            )
-            .unwrap()
-        });
-        tasks
-    }
-}
-
 impl App<'_> {
     pub fn new(new: bool, config: Config) -> Self {
         let tasks = if config.encryption {
@@ -214,7 +147,6 @@ impl App<'_> {
             crate::tasks::load().unwrap_or_else(|_| Vec::new())
         };
         let mut group = Self::group_date_tasks(&tasks);
-        let overdue_tasks = OverDue::get_tasks(tasks.clone());
 
         let mut text_area = TextArea::default();
         text_area.set_placeholder_text("Press / to search");
@@ -238,6 +170,7 @@ impl App<'_> {
             total: group.2,
             preview_scroll: (0, 0),
             theme: Theme::Default,
+            over_due: OverDue::new(&tasks),
             tasks: Tasks {
                 list: tasks,
                 grouped: group.1,
@@ -248,15 +181,11 @@ impl App<'_> {
             right_area: RightArea::NewTask,
             search: text_area,
             config,
-            over_due: OverDue {
-                state: TableState::default(),
-                tasks: overdue_tasks,
-            },
         }
     }
 
     fn render_first_time_setup(&self, area: Rect, buf: &mut Buffer) {
-        crate::confirm::Confirm::new(
+        crate::ui::Confirm::new(
             " Welcome to TodoTUI ".into(),
             "This is a one time setup. \n Would you like to enable encryption?".into(),
             PopupSize::Percentage { x: 25, y: 15 },
@@ -477,12 +406,15 @@ impl App<'_> {
                             self.add_or_modify_task();
                             self.search.select_all();
                             self.search.delete_newline();
+                            self.select_added_task(self.new_task.get_task().id);
                             self.right_area = RightArea::Preview;
                             self.new_task = NewTask::new();
+                        } else {
+                            self.save_new_task_state();
+                            self.select_last_selected();
                         }
-                        self.save_new_task_state();
                         self.focus = AppFocus::LeftArea;
-                        self.state.select(None);
+
                     }
                 } else {
                     match key.code {
@@ -530,18 +462,27 @@ impl App<'_> {
 
                 _ => {}
             },
-            AppFocus::OverDue => match key.code {
-                KeyCode::Char('q') => self.focus = AppFocus::LeftArea,
-                KeyCode::Down => self.over_due.state.select_next(),
-                KeyCode::Up => self.over_due.state.select_previous(),
-                _ => {}
-            },
+            AppFocus::OverDue => {
+                if self.over_due.handle_key(key) {
+                    self.focus = AppFocus::LeftArea;
+                }
+            }
         }
         false
     }
 
+    fn select_added_task(&mut self, task_id: u128) {
+        let idx = self
+            .tasks
+            .selectable
+            .iter()
+            .find(|(_, id)| *id == task_id)
+            .unwrap();
+        self.state.select(Some(idx.0));
+    }
+
     fn add_or_modify_task(&mut self) {
-        let task = self.new_task.get_task();
+        let task = self.new_task.get_task().clone();
         if self.right_area == RightArea::EditTask {
             if let Some(selected_task) = self.get_selected_mut() {
                 *selected_task = task;
@@ -598,10 +539,7 @@ impl App<'_> {
     }
 
     fn scroll(&mut self, scroll_direction: ScrollDirection) {
-        if self.tasks.selectable.is_empty() {
-            return;
-        }
-        if self.select_last_selected() {
+        if self.tasks.selectable.is_empty() || self.select_last_selected() {
             return;
         }
         let index = match self.state.selected() {
@@ -699,9 +637,7 @@ impl App<'_> {
                     RightArea::NewTask => "[Tab] Focus New Task",
                     RightArea::Preview => "[Tab] Focus Preview",
                 };
-                footer_text.push(title);
-                footer_text.push("[s] Settings");
-                footer_text.push("[q] Quit");
+                footer_text.extend_from_slice(&[title, "[s] Settings", "[q] Quit"]);
             }
             AppFocus::RightArea => {
                 if self.right_area != RightArea::Preview {
@@ -711,16 +647,13 @@ impl App<'_> {
                 }
             }
             AppFocus::DeletePrompt | AppFocus::FirstTimeSetup => {
-                footer_text = crate::confirm::get_footer_text()
+                footer_text.extend_from_slice(&["[y] Yes", "[n] No"]);
             }
             AppFocus::Search => {
-                footer_text.push("[Esc] Exit Search");
-                footer_text.push("[Enter] Exit Search");
-                footer_text.push("[Tab] Exit Search");
+                footer_text.extend_from_slice(&["[Esc] Exit Search", "[Enter] Exit Search"]);
             }
             AppFocus::OverDue => {
-                footer_text.push(arrows);
-                footer_text.push("[q] Quit");
+                footer_text.extend_from_slice(&[arrows, "[q] Quit"]);
             }
         }
         footer_text.join(" | ")

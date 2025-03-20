@@ -1,19 +1,17 @@
-use app::App;
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{self, Event, KeyEventKind},
 };
 use std::io::Result;
+use ui::App;
 
-mod app;
 mod auth;
 mod cli;
 mod config;
-mod confirm;
 mod helpers;
-mod new_task;
 mod tasks;
 mod theme;
+mod ui;
 
 fn main() -> Result<()> {
     cli::handle_arguments()?;

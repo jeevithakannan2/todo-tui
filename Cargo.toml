@@ -4,23 +4,23 @@ version = "0.3.0"
 edition = "2024"
 
 [dependencies]
+aes-gcm = { version = "0.10.3" }
 chrono = "0.4.40"
+clap = { version = "4.5.32", features = ["derive"] }
 directories = "6.0.0"
+rand = { version = "0.8" }
 ratatui = "0.29.0"
 serde = { version = "1.0.217", features = ["derive"] }
 serde_json = "1.0.138"
+toml = "0.8.20"
 tui-markdown = "0.3.3"
 tui-textarea = "0.7.0"
 uuid = { version = "1.16.0", features = ["v7"] }
-aes-gcm = { version = "0.10.3" }
-rand = { version = "0.8" }
-clap = { version = "4.5.32", features = ["derive"] }
-toml = "0.8.20"
 
 [profile.release]
-lto = "fat"
 codegen-units = 1
-strip = true
+debug = false
+lto = "fat"
 opt-level = "z"
 panic = "abort"
-debug = false
+strip = true

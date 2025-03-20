@@ -4,8 +4,8 @@ use ratatui::{
 };
 
 use crate::{
-    app::{GREEN_STYLE, PRIMARY_STYLE, RED_STYLE},
     helpers::{PopupSize, create_popup_area},
+    ui::{GREEN_STYLE, PRIMARY_STYLE, RED_STYLE},
 };
 
 pub struct Confirm {
@@ -52,8 +52,4 @@ impl Confirm {
             .wrap(Wrap { trim: true })
             .render(area, buf);
     }
-}
-
-pub fn get_footer_text() -> Vec<&'static str> {
-    vec!["[y] Yes", "[n] No"]
 }
