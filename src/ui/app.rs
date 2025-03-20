@@ -14,7 +14,7 @@ use crate::{
     theme::Theme,
 };
 
-use super::{NewTask, OverDue};
+use super::{Confirm, NewTask, OverDue};
 
 pub struct App<'a> {
     theme: Theme,
@@ -67,82 +67,6 @@ pub const GREEN_STYLE: Style = Style::new().fg(Color::Rgb(0, 255, 0));
 pub const RED_STYLE: Style = Style::new().fg(Color::Rgb(255, 0, 0));
 pub const SELECTION_STYLE: Style = Style::new().fg(Color::Rgb(249, 226, 175));
 
-impl Widget for &mut App<'_> {
-    fn render(self, area: Rect, buf: &mut Buffer) {
-        let footer_text: Line = self.get_footer_text().into();
-        let footer_height = (1 + footer_text.width().try_into().unwrap_or(0) / area.width).min(3);
-
-        let [main_area, footer_area] =
-            Layout::vertical([Constraint::Fill(1), Constraint::Length(footer_height)]).areas(area);
-
-        if self.focus == AppFocus::FirstTimeSetup {
-            self.render_first_time_setup(area, buf);
-            return;
-        }
-
-        if self.state.selected().is_none() {
-            self.right_area = RightArea::NewTask
-        } else if self.right_area != RightArea::EditTask {
-            self.right_area = RightArea::Preview
-        }
-
-        self.render_footer(footer_area, buf, footer_text);
-
-        let [left_area, right_area] =
-            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
-                .areas(main_area);
-        let [search_area, list_area] =
-            Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).areas(left_area);
-
-        self.render_search(search_area, buf, self.get_border_style(AppFocus::Search));
-        self.render_list(list_area, buf);
-        self.render_right_border(right_area, buf);
-
-        let right_area = right_area.inner(Margin {
-            horizontal: 1,
-            vertical: 1,
-        });
-
-        if self.right_area == RightArea::Preview {
-            self.render_preview(right_area, buf);
-        } else {
-            self.new_task.render(right_area, buf);
-        }
-
-        match self.focus {
-            AppFocus::OverDue => self.over_due.render(main_area, buf),
-            AppFocus::DeletePrompt => {
-                crate::ui::Confirm::new(
-                    " Delete Task ".into(),
-                    "Delete the selected task?".into(),
-                    PopupSize::Percentage { x: 20, y: 15 },
-                )
-                .render(main_area, buf);
-            }
-            AppFocus::ToggleEnc => {
-                let (title, body) = if self.config.encryption {
-                    (
-                        " Disable Encryption ",
-                        "Would you like to disable encryption?",
-                    )
-                } else {
-                    (
-                        " Enable Encryption ",
-                        "Would you like to enable encryption?",
-                    )
-                };
-                crate::ui::Confirm::new(
-                    title.into(),
-                    body.into(),
-                    PopupSize::Percentage { x: 20, y: 15 },
-                )
-                .render(main_area, buf);
-            }
-            _ => {}
-        }
-    }
-}
-
 impl App<'_> {
     pub fn new(new: bool, config: Config) -> Self {
         let tasks = if config.encryption {
@@ -161,6 +85,8 @@ impl App<'_> {
 
         let focus = if new {
             AppFocus::FirstTimeSetup
+        } else if tasks.is_empty() {
+            AppFocus::RightArea
         } else if first_date < chrono::Local::now().naive_local().date() {
             AppFocus::OverDue
         } else {
@@ -188,29 +114,30 @@ impl App<'_> {
         }
     }
 
-    fn render_first_time_setup(&self, area: Rect, buf: &mut Buffer) {
-        crate::ui::Confirm::new(
-            " Welcome to TodoTUI ".into(),
-            "This is a one time setup. \n Would you like to enable encryption?".into(),
-            PopupSize::Percentage { x: 50, y: 50 },
-        )
-        .render(area, buf);
-    }
-
-    fn get_filtered_tasks(&self) -> Vec<Task> {
-        let search_text = &self.search.lines()[0];
-        if search_text.is_empty() {
-            return self.tasks.list.clone();
+    pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
+        // The right area determination should always be first so that the footer text get correctly
+        if self.state.selected().is_none() {
+            self.right_area = RightArea::NewTask
+        } else if self.right_area != RightArea::EditTask {
+            self.right_area = RightArea::Preview
         }
-        self.tasks
-            .list
-            .iter()
-            .filter(|t| t.title.contains(search_text))
-            .cloned()
-            .collect()
-    }
 
-    fn render_search(&mut self, area: Rect, buf: &mut Buffer, border_style: Style) {
+        let footer_text: Line = self.get_footer_text().into();
+        let footer_height = (1 + footer_text.width().try_into().unwrap_or(0) / area.width).min(3);
+
+        let [main_area, footer_area] =
+            Layout::vertical([Constraint::Fill(1), Constraint::Length(footer_height)]).areas(area);
+
+        let [left_area, right_area] =
+            Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+                .areas(main_area);
+        
+        // Left area
+        let [search_area, list_area] =
+            Layout::vertical([Constraint::Length(3), Constraint::Min(1)]).areas(left_area);
+        
+        // Render Search
+        let border_style = self.get_border_style(AppFocus::Search);
         let cursor_style = if border_style == PRIMARY_STYLE {
             Style::default().reversed()
         } else {
@@ -219,64 +146,9 @@ impl App<'_> {
         self.search.set_cursor_style(cursor_style);
         self.search
             .set_block(rounded_block(" Search ", border_style));
-        self.search.render(area, buf);
-    }
+        frame.render_widget(&self.search, search_area);
 
-    fn render_footer(&self, area: Rect, buf: &mut Buffer, line: Line) {
-        Paragraph::new(line)
-            .alignment(Alignment::Center)
-            .wrap(Wrap { trim: true })
-            .render(area, buf);
-    }
-
-    fn get_border_style(&self, focus: AppFocus) -> Style {
-        if self.focus == focus {
-            PRIMARY_STYLE
-        } else {
-            SECONDARY_STYLE
-        }
-    }
-
-    fn render_right_border(&self, area: Rect, buf: &mut Buffer) {
-        let style = self.get_border_style(AppFocus::RightArea);
-
-        let title = match self.right_area {
-            RightArea::Preview => " Preview ",
-            RightArea::NewTask => " New Task ",
-            RightArea::EditTask => " Edit Task ",
-        };
-
-        crate::helpers::rounded_block(title, style).render(area, buf);
-    }
-
-    fn group_date_tasks(
-        tasks: &[Task],
-    ) -> (Vec<(usize, u128)>, BTreeMap<NaiveDate, Vec<Task>>, usize) {
-        let mut grouped_tasks: BTreeMap<NaiveDate, Vec<Task>> = BTreeMap::new();
-        for task in tasks {
-            let date = NaiveDate::parse_from_str(&task.date, "%d-%m-%Y").unwrap();
-            grouped_tasks.entry(date).or_default().push(task.clone());
-        }
-
-        // Sort by time
-        for (_, task_list) in grouped_tasks.iter_mut() {
-            task_list.sort_by_key(|task| NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap());
-        }
-
-        let mut selectable: Vec<(usize, u128)> = Vec::new();
-        let mut idx = 0;
-
-        for (_, tasks) in &grouped_tasks {
-            idx += 1;
-            for task in tasks {
-                selectable.push((idx, task.id));
-                idx += 1;
-            }
-        }
-        (selectable, grouped_tasks, idx)
-    }
-
-    fn render_list(&mut self, area: Rect, buf: &mut Buffer) {
+        // Render Task list
         let style = self.get_border_style(AppFocus::LeftArea);
         let block = crate::helpers::rounded_block(" Tasks ", style);
 
@@ -327,26 +199,131 @@ impl App<'_> {
             .block(block)
             .row_highlight_style(SELECTION_STYLE);
 
-        StatefulWidget::render(table, area, buf, &mut self.state);
+        frame.render_stateful_widget(table, list_area, &mut self.state);
+
+        // Right area
+        // Render Border
+        let style = self.get_border_style(AppFocus::RightArea);
+
+        let title = match self.right_area {
+            RightArea::Preview => " Preview ",
+            RightArea::NewTask => " New Task ",
+            RightArea::EditTask => " Edit Task ",
+        };
+
+        let block = crate::helpers::rounded_block(title, style);
+        frame.render_widget(&block, right_area);
+
+        // Render Preview or NewTask
+        let right_area = block.inner(right_area);
+        if self.right_area == RightArea::Preview {
+            let task = self.get_selected().unwrap();
+            let description = task.description.as_str();
+            self.verify_preview_scroll(description.lines().count() as u16, area);
+            let text = tui_markdown::from_str(description).style(Style::default());
+            let preview = Paragraph::new(text)
+                .scroll(self.preview_scroll)
+                .wrap(Wrap { trim: true });
+            frame.render_widget(preview, right_area);
+        } else {
+            frame.render_widget(&mut self.new_task, right_area);
+        }
+
+        // Render Footer
+        let footer = Paragraph::new(footer_text)
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true });
+
+        frame.render_widget(footer, footer_area);
+
+        // Render popup prompts
+        match self.focus {
+            AppFocus::OverDue => frame.render_widget(&mut self.over_due, main_area),
+            AppFocus::DeletePrompt => {
+                let confirm = Confirm::new(
+                    " Delete Task ".into(),
+                    "Delete the selected task?".into(),
+                    PopupSize::Percentage { x: 20, y: 15 },
+                );
+                frame.render_widget(confirm, main_area);
+            }
+            AppFocus::ToggleEnc => {
+                let (title, body) = if self.config.encryption {
+                    (
+                        " Disable Encryption ",
+                        "Would you like to disable encryption?",
+                    )
+                } else {
+                    (
+                        " Enable Encryption ",
+                        "Would you like to enable encryption?",
+                    )
+                };
+                let confirm = Confirm::new(
+                    title.into(),
+                    body.into(),
+                    PopupSize::Percentage { x: 20, y: 15 },
+                );
+                frame.render_widget(confirm, main_area);
+            }
+            AppFocus::FirstTimeSetup => {
+                let widget = Confirm::new(
+                    " Welcome to TodoTUI ".into(),
+                    "This is a one time setup. \n Would you like to enable encryption?".into(),
+                    PopupSize::Percentage { x: 20, y: 20 },
+                );
+                frame.render_widget(widget, area);
+            }
+            _ => {}
+        }
     }
 
-    fn render_preview(&mut self, area: Rect, buf: &mut Buffer) {
-        let temp_task = Task {
-            id: 0,
-            title: String::new(),
-            date: String::new(),
-            time: String::new(),
-            description: String::from("No task selected"),
-            completed: false,
-        };
-        let task = self.get_selected().unwrap_or(temp_task);
-        let description = task.description.as_str();
-        self.verify_preview_scroll(description.lines().count() as u16, area);
-        let text = tui_markdown::from_str(description).style(Style::default());
-        Paragraph::new(text)
-            .scroll(self.preview_scroll)
-            .wrap(Wrap { trim: true })
-            .render(area, buf);
+    fn get_filtered_tasks(&self) -> Vec<Task> {
+        let search_text = &self.search.lines()[0];
+        if search_text.is_empty() {
+            return self.tasks.list.clone();
+        }
+        self.tasks
+            .list
+            .iter()
+            .filter(|t| t.title.contains(search_text))
+            .cloned()
+            .collect()
+    }
+
+    fn get_border_style(&self, focus: AppFocus) -> Style {
+        if self.focus == focus {
+            PRIMARY_STYLE
+        } else {
+            SECONDARY_STYLE
+        }
+    }
+
+    fn group_date_tasks(
+        tasks: &[Task],
+    ) -> (Vec<(usize, u128)>, BTreeMap<NaiveDate, Vec<Task>>, usize) {
+        let mut grouped_tasks: BTreeMap<NaiveDate, Vec<Task>> = BTreeMap::new();
+        for task in tasks {
+            let date = NaiveDate::parse_from_str(&task.date, "%d-%m-%Y").unwrap();
+            grouped_tasks.entry(date).or_default().push(task.clone());
+        }
+
+        // Sort by time
+        for (_, task_list) in grouped_tasks.iter_mut() {
+            task_list.sort_by_key(|task| NaiveTime::parse_from_str(&task.time, "%H:%M").unwrap());
+        }
+
+        let mut selectable: Vec<(usize, u128)> = Vec::new();
+        let mut idx = 0;
+
+        for (_, tasks) in &grouped_tasks {
+            idx += 1;
+            for task in tasks {
+                selectable.push((idx, task.id));
+                idx += 1;
+            }
+        }
+        (selectable, grouped_tasks, idx)
     }
 
     // Verify that the preview scroll is within bounds
@@ -466,7 +443,6 @@ impl App<'_> {
                     self.config.save();
                     self.focus = AppFocus::LeftArea;
                 }
-
                 _ => {}
             },
             AppFocus::OverDue => {
@@ -622,6 +598,9 @@ impl App<'_> {
             if let Some(_) = self.state.selected() {
                 self.scroll(ScrollDirection::Down);
             }
+        }
+        if self.tasks.list.is_empty() {
+            self.state.select(None);
         }
     }
 

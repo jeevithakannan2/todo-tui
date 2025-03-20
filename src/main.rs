@@ -24,7 +24,7 @@ fn main() -> Result<()> {
 
 fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
     loop {
-        terminal.draw(|frame| frame.render_widget(&mut app, frame.area()))?;
+        terminal.draw(|frame| app.draw(frame, frame.area()))?;
         if let Event::Key(key) = event::read()? {
             if key.kind != KeyEventKind::Press && key.kind != KeyEventKind::Repeat {
                 continue;
