@@ -4,14 +4,14 @@ use ratatui::{
 };
 
 use crate::{
-    app::{GREEN_STYLE, PRIMARY_STYLE, RED_STYLE},
     helpers::{PopupSize, create_popup_area},
+    ui::{GREEN_STYLE, PRIMARY_STYLE, RED_STYLE},
 };
 
 pub struct Confirm {
-    pub title: String,
-    pub body: String,
-    pub popup_size: PopupSize,
+    title: String,
+    body: String,
+    popup_size: PopupSize,
 }
 
 impl Widget for Confirm {
@@ -52,8 +52,4 @@ impl Confirm {
             .wrap(Wrap { trim: true })
             .render(area, buf);
     }
-}
-
-pub fn get_footer_text() -> Vec<&'static str> {
-    vec!["[y] Yes", "[n] No"]
 }

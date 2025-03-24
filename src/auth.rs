@@ -6,13 +6,11 @@ use std::{fs, io::Write, path::PathBuf};
 
 use crate::tasks::Task;
 
-/// Path to store the encryption key
 fn key_path() -> PathBuf {
     let dirs = BaseDirs::new().expect("Failed to find home directory");
     dirs.home_dir().join(".todotui_key")
 }
 
-/// Generate a new encryption key
 pub fn generate_key() {
     let key_file = key_path();
     let mut key = vec![0u8; 32]; // AES-256 key
@@ -51,7 +49,6 @@ pub fn generate_key() {
     }
 }
 
-/// Generate and store the key if it doesn't exist
 pub fn load_key() -> Vec<u8> {
     let key_file = key_path();
     if key_file.exists() {
@@ -61,7 +58,6 @@ pub fn load_key() -> Vec<u8> {
     }
 }
 
-/// Encrypts JSON tasks with a locally stored key
 pub fn encrypt_tasks(tasks: &[Task]) -> Vec<u8> {
     let key = load_key();
     let cipher = Aes256Gcm::new_from_slice(&key).expect("Invalid key length");
@@ -78,7 +74,6 @@ pub fn encrypt_tasks(tasks: &[Task]) -> Vec<u8> {
     [nonce_bytes.to_vec(), ciphertext].concat()
 }
 
-/// Decrypts JSON tasks with a locally stored key
 pub fn decrypt_tasks(encrypted_data: &[u8]) -> Vec<Task> {
     let key = load_key();
     let cipher = Aes256Gcm::new_from_slice(&key).expect("Invalid key length");

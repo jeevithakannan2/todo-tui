@@ -1,4 +1,3 @@
-use crate::{app::RED_STYLE, tasks::Task};
 use chrono::{NaiveDate, NaiveTime};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent},
@@ -6,6 +5,10 @@ use ratatui::{
     widgets::{Block, BorderType, Clear},
 };
 use tui_textarea::{CursorMove, TextArea};
+
+use crate::tasks::Task;
+
+use super::RED_STYLE;
 
 #[derive(Clone)]
 pub struct NewTask<'a> {
@@ -47,7 +50,7 @@ impl Widget for &mut NewTask<'_> {
             Constraint::Length(3),
             Constraint::Length(3),
             Constraint::Length(3),
-            Constraint::Min(1),
+            Constraint::Min(3),
         ]);
         let [title_area, date_area, time_area, description_area] = vertical.areas(area);
 
@@ -65,7 +68,8 @@ impl Widgets<'_> {
         let mut date = TextArea::default();
         let mut time = TextArea::default();
         let mut description = TextArea::default();
-        Self::set_block(&mut title, &mut date, &mut time, &mut description);
+        let mut widgets = [&mut title, &mut date, &mut time, &mut description];
+        Self::setup_widgets(&mut widgets);
         Self {
             title,
             date,
@@ -84,10 +88,8 @@ impl Widgets<'_> {
         let mut date = TextArea::new(date);
         let mut time = TextArea::new(time);
         let mut description = TextArea::new(description);
-        Self::set_block(&mut title, &mut date, &mut time, &mut description);
-        for widget in [&mut title, &mut date, &mut time, &mut description].iter_mut() {
-            widget.move_cursor(CursorMove::End);
-        }
+        let mut widgets = [&mut title, &mut date, &mut time, &mut description];
+        Self::setup_widgets(&mut widgets);
         Self {
             title,
             date,
@@ -96,12 +98,7 @@ impl Widgets<'_> {
         }
     }
 
-    fn set_block(
-        title: &mut TextArea,
-        date: &mut TextArea,
-        time: &mut TextArea,
-        description: &mut TextArea,
-    ) {
+    fn setup_widgets(widgets: &mut [&mut TextArea]) {
         // Helper function to create a bordered block
         fn get_block(title: &str) -> Block {
             Block::bordered()
@@ -109,20 +106,19 @@ impl Widgets<'_> {
                 .border_type(BorderType::Rounded)
         }
 
-        title.set_block(get_block(" Title "));
-        // Time && Date set_block will be updated in render_date fn
-        description.set_block(get_block(" Description "));
+        let titles = [
+            (" Title ", "Enter your task title"),
+            (" Date - (DD MM YYYY) ", "Enter your task date"),
+            (" Time - (HH MM) ", "Enter your estimated completion time"),
+            (" Description ", "Enter your task description"),
+        ];
 
-        // Remove the underline when typing
-        title.set_cursor_line_style(Style::default());
-        date.set_cursor_line_style(Style::default());
-        time.set_cursor_line_style(Style::default());
-        description.set_cursor_line_style(Style::default());
-
-        title.set_placeholder_text("Enter your task title here");
-        date.set_placeholder_text("Enter your task date here");
-        time.set_placeholder_text("Enter your estimated completion time here");
-        description.set_placeholder_text("Enter your task description here");
+        for (widget, (title, placeholder)) in widgets.iter_mut().zip(titles.iter()) {
+            widget.set_block(get_block(title));
+            widget.set_placeholder_text(*placeholder);
+            widget.set_cursor_line_style(Style::default()); // Remove the underline when typing
+            widget.move_cursor(CursorMove::End);
+        }
     }
 }
 
@@ -160,34 +156,22 @@ impl NewTask<'_> {
 
     fn render_time(&mut self, area: Rect, buf: &mut Buffer) {
         let time_val = self.widgets.time.lines()[0].to_string();
-        let time = NaiveTime::parse_from_str(&time_val, "%H:%M");
+        let time = NaiveTime::parse_from_str(&time_val, "%H %M");
         let style = match time {
             Ok(_) => Style::default(),
-            Err(_) if !time_val.is_empty() => RED_STYLE,
-            _ => Style::default(),
+            Err(_) => RED_STYLE,
         };
-        self.widgets.time.set_block(
-            Block::bordered()
-                .title(" Time - (HH:MM) ")
-                .border_type(BorderType::Rounded),
-        );
         self.widgets.time.set_cursor_line_style(style);
         self.widgets.time.render(area, buf);
     }
 
     fn render_date(&mut self, area: Rect, buf: &mut Buffer) {
         let date_val = self.widgets.date.lines()[0].to_string();
-        let date = NaiveDate::parse_from_str(&date_val, "%d-%m-%Y");
+        let date = NaiveDate::parse_from_str(&date_val, "%d %m %Y");
         let style = match date {
             Ok(_) => Style::default(),
-            Err(_) if !date_val.is_empty() => RED_STYLE,
-            _ => Style::default(),
+            Err(_) => RED_STYLE,
         };
-        self.widgets.date.set_block(
-            Block::bordered()
-                .title(" Date - (DD-MM-YYYY) ")
-                .border_type(BorderType::Rounded),
-        );
         self.widgets.date.set_cursor_line_style(style);
         self.widgets.date.render(area, buf);
     }
@@ -208,19 +192,20 @@ impl NewTask<'_> {
     }
 
     fn set_cursor_style(&mut self) {
-        let mut cursor_styles = (Style::default(), Style::default(), Style::default(), Style::default());
+        let mut cursor_styles = [Style::default(); 4];
+
         if self.mode == Mode::Insert {
             match self.focus {
-                Focus::Title => cursor_styles.0 = cursor_styles.0.reversed(),
-                Focus::Date => cursor_styles.1 = cursor_styles.1.reversed(),
-                Focus::Time => cursor_styles.2 = cursor_styles.2.reversed(),
-                Focus::Description => cursor_styles.3 = cursor_styles.3.reversed(),
+                Focus::Title => cursor_styles[0] = cursor_styles[0].reversed(),
+                Focus::Date => cursor_styles[1] = cursor_styles[1].reversed(),
+                Focus::Time => cursor_styles[2] = cursor_styles[2].reversed(),
+                Focus::Description => cursor_styles[3] = cursor_styles[3].reversed(),
             }
         }
-        self.widgets.title.set_cursor_style(cursor_styles.0);
-        self.widgets.date.set_cursor_style(cursor_styles.1);
-        self.widgets.time.set_cursor_style(cursor_styles.2);
-        self.widgets.description.set_cursor_style(cursor_styles.3);
+        self.widgets.title.set_cursor_style(cursor_styles[0]);
+        self.widgets.date.set_cursor_style(cursor_styles[1]);
+        self.widgets.time.set_cursor_style(cursor_styles[2]);
+        self.widgets.description.set_cursor_style(cursor_styles[3]);
     }
 
     pub fn handle_key(&mut self, key: KeyEvent) {
@@ -229,20 +214,18 @@ impl NewTask<'_> {
                 KeyCode::Tab => self.quit = true,
                 KeyCode::Char('i') => self.mode = Mode::Insert,
                 KeyCode::Enter => {
-                    if self.widgets.date.cursor_line_style() == RED_STYLE {
+                    if self.widgets.date.cursor_line_style() == RED_STYLE
+                        || self.widgets.time.cursor_line_style() == RED_STYLE
+                    {
                         return;
                     }
                     self.mode = Mode::Normal;
-                    let title_val = self.widgets.title.lines()[0].to_string();
-                    let date_val = self.widgets.date.lines()[0].to_string();
-                    let time_val = self.widgets.time.lines()[0].to_string();
-                    let description_val = self.widgets.description.lines().join("\n");
                     self.task = Task {
                         id: self.task.id,
-                        title: title_val,
-                        date: date_val,
-                        time: time_val,
-                        description: description_val,
+                        title: self.widgets.title.lines()[0].to_string(),
+                        date: self.widgets.date.lines()[0].to_string(),
+                        time: self.widgets.time.lines()[0].to_string(),
+                        description: self.widgets.description.lines().join("\n"),
                         completed: false,
                     };
                     self.quit = true;
@@ -278,8 +261,8 @@ impl NewTask<'_> {
         }
     }
 
-    pub fn get_task(&self) -> Task {
-        self.task.clone()
+    pub fn get_task(&self) -> &Task {
+        &self.task
     }
 
     pub fn footer_text(&self) -> Box<[&str]> {

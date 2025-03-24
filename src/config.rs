@@ -34,6 +34,7 @@ impl Config {
 
     pub fn save(&self) {
         let data = toml::to_string_pretty(&self).unwrap();
+        fs::create_dir_all(Self::get_config_dir()).unwrap();
         fs::write(Self::get_config_path(), data).unwrap();
     }
 }

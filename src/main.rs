@@ -1,19 +1,17 @@
-use app::App;
 use ratatui::{
     DefaultTerminal,
     crossterm::event::{self, Event, KeyEventKind},
 };
 use std::io::Result;
+use ui::App;
 
-mod app;
 mod auth;
 mod cli;
 mod config;
-mod confirm;
 mod helpers;
-mod new_task;
 mod tasks;
 mod theme;
+mod ui;
 
 fn main() -> Result<()> {
     cli::handle_arguments()?;
@@ -26,7 +24,7 @@ fn main() -> Result<()> {
 
 fn run(terminal: &mut DefaultTerminal, mut app: App) -> Result<()> {
     loop {
-        terminal.draw(|frame| frame.render_widget(&mut app, frame.area()))?;
+        terminal.draw(|frame| app.draw(frame, frame.area()))?;
         if let Event::Key(key) = event::read()? {
             if key.kind != KeyEventKind::Press && key.kind != KeyEventKind::Repeat {
                 continue;
