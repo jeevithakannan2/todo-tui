@@ -77,7 +77,9 @@ impl App<'_> {
         let group = Self::group_date_tasks(&tasks);
 
         let mut text_area = TextArea::default();
-        text_area.set_placeholder_text("Press / to search");
+        text_area.set_placeholder_text(
+            "Press / to search by title or date range (DD MM YYYY - DD MM YYYY)",
+        );
         text_area.set_cursor_line_style(Style::default());
 
         let overdue_tasks = OverDue::get_tasks(&tasks);
@@ -283,6 +285,26 @@ impl App<'_> {
         if search_text.is_empty() {
             return self.tasks.list.clone();
         }
+
+        let dates: Vec<&str> = search_text.split(" - ").collect();
+        if dates.len() == 2 {
+            let date1 = NaiveDate::parse_from_str(dates[0].trim(), "%d %m %Y").ok();
+            let date2 = NaiveDate::parse_from_str(dates[1].trim(), "%d %m %Y").ok();
+
+            if let (Some(date1), Some(date2)) = (date1, date2) {
+                return self
+                    .tasks
+                    .list
+                    .iter()
+                    .filter(|t| {
+                        let task_date = NaiveDate::parse_from_str(&t.date, "%d %m %Y").unwrap();
+                        task_date >= date1 && task_date <= date2
+                    })
+                    .cloned()
+                    .collect();
+            }
+        }
+
         self.tasks
             .list
             .iter()
