@@ -517,7 +517,7 @@ impl App<'_> {
     }
 
     fn restore_new_task_state(&mut self) {
-        self.new_task = if let Some(save) = self.new_task_save.as_ref() {
+        self.new_task = if let Some(save) = self.new_task_save.take() {
             save.clone()
         } else {
             NewTask::new()
