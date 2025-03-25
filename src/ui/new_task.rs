@@ -6,7 +6,7 @@ use ratatui::{
 };
 use tui_textarea::{CursorMove, TextArea};
 
-use crate::tasks::Task;
+use crate::tasks::{Task, TaskStatus};
 
 use super::RED_STYLE;
 
@@ -226,8 +226,11 @@ impl NewTask<'_> {
                         date: self.widgets.date.lines()[0].to_string(),
                         time: self.widgets.time.lines()[0].to_string(),
                         description: self.widgets.description.lines().join("\n"),
-                        completed: false,
+                        status: TaskStatus::Pending,
                     };
+                    if self.task.is_overdue() {
+                        self.task.status = TaskStatus::OverDue;
+                    }
                     self.quit = true;
                     self.completed = true;
                 }

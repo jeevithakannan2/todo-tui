@@ -1,3 +1,4 @@
+use chrono::NaiveDateTime;
 use serde::{Deserialize, Serialize};
 use std::{fs, io, path::PathBuf};
 
@@ -8,7 +9,14 @@ pub struct Task {
     pub date: String,
     pub time: String,
     pub description: String,
-    pub completed: bool,
+    pub status: TaskStatus,
+}
+
+#[derive(Serialize, Clone, PartialEq, Deserialize)]
+pub enum TaskStatus {
+    Completed,
+    Pending,
+    OverDue,
 }
 
 impl Task {
@@ -19,7 +27,7 @@ impl Task {
             date: String::new(),
             time: String::new(),
             description: String::new(),
-            completed: false,
+            status: TaskStatus::Pending,
         }
     }
 
@@ -30,7 +38,23 @@ impl Task {
             date: String::new(),
             time: String::new(),
             description: String::new(),
-            completed: false,
+            status: TaskStatus::Pending,
+        }
+    }
+
+    pub fn is_overdue(&self) -> bool {
+        let now = chrono::Local::now().naive_local();
+        let date_time_str = format!("{} {}", self.time, self.date);
+        let date_time = NaiveDateTime::parse_from_str(&date_time_str, "%H %M %d %m %Y").unwrap();
+        self.status == TaskStatus::OverDue || self.status == TaskStatus::Pending && date_time < now
+    }
+}
+
+
+pub fn update_overdue(tasks: &mut [Task]) {
+    for task in tasks.iter_mut() {
+        if task.is_overdue() {
+            task.status = TaskStatus::OverDue;
         }
     }
 }

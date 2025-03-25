@@ -21,7 +21,7 @@ impl Widget for &mut OverDue {
 
         let block = crate::helpers::rounded_block(" Overdues ", PRIMARY_STYLE);
         let mut rows: Vec<Row> = Vec::new();
-        
+
         for task in &self.tasks {
             let title = task.title.as_str();
             let date_time_str = format!("{} {}", task.time, task.date);
@@ -31,7 +31,7 @@ impl Widget for &mut OverDue {
             let row = Row::new(vec![Cell::from(title), Cell::from(date_time.to_string())]);
             rows.push(row);
         }
-        
+
         let headers = Row::new(vec!["Title", "Due"])
             .style(Style::default().bold().reversed())
             .bottom_margin(1);
@@ -43,7 +43,7 @@ impl Widget for &mut OverDue {
         .header(headers)
         .row_highlight_style(SELECTION_STYLE)
         .block(block);
-        
+
         StatefulWidget::render(table, area, buf, &mut self.state);
     }
 }
@@ -55,16 +55,11 @@ impl OverDue {
             tasks,
         }
     }
+
     pub fn get_tasks(tasks: &[Task]) -> Vec<Task> {
-        let now = chrono::Local::now().naive_local();
         let mut tasks: Vec<Task> = tasks
             .iter()
-            .filter(|task| {
-                let date_time_str = format!("{} {}", task.time, task.date);
-                let date_time =
-                    NaiveDateTime::parse_from_str(&date_time_str, "%H %M %d %m %Y").unwrap();
-                !task.completed && date_time < now
-            })
+            .filter(|task| task.is_overdue())
             .cloned()
             .collect();
         tasks.sort_by_key(|task| {

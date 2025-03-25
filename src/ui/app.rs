@@ -1,4 +1,4 @@
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{NaiveDate, NaiveTime};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     prelude::*,
@@ -10,7 +10,7 @@ use tui_textarea::TextArea;
 use crate::{
     config::Config,
     helpers::{PopupSize, rounded_block},
-    tasks::Task,
+    tasks::{Task, TaskStatus},
     theme::Theme,
 };
 
@@ -69,11 +69,13 @@ pub const SELECTION_STYLE: Style = Style::new().fg(Color::Rgb(249, 226, 175));
 
 impl App<'_> {
     pub fn new(new: bool, config: Config) -> Self {
-        let tasks = if config.encryption {
+        let mut tasks = if config.encryption {
             crate::tasks::load_encrypted().unwrap_or_else(|_| Vec::new())
         } else {
             crate::tasks::load().unwrap_or_else(|_| Vec::new())
         };
+
+        crate::tasks::update_overdue(&mut tasks);
         let group = Self::group_date_tasks(&tasks);
 
         let mut text_area = TextArea::default();
@@ -174,12 +176,10 @@ impl App<'_> {
             // Add tasks under the date
             for (i, task) in tasks.iter().enumerate() {
                 let title = task.title.as_str();
-                let time = NaiveTime::parse_from_str(&task.time, "%H %M").unwrap_or(now.time());
-                let date_time = NaiveDateTime::new(*date, time);
 
-                let (icon, style) = if task.completed {
+                let (icon, style) = if task.status == TaskStatus::Completed {
                     (self.theme.get_completed(), Style::default().dark_gray())
-                } else if date_time < now {
+                } else if task.is_overdue() {
                     (self.theme.get_uncompleted(), Style::default().red().bold())
                 } else {
                     (self.theme.get_uncompleted(), Style::default().bold())
@@ -608,7 +608,15 @@ impl App<'_> {
 
     fn toggle_completed(&mut self) {
         if let Some(task) = self.get_selected_mut() {
-            task.completed = !task.completed;
+            if task.status == TaskStatus::Completed {
+                if task.is_overdue() {
+                    task.status = TaskStatus::OverDue;
+                } else {
+                    task.status = TaskStatus::Pending;
+                }
+            } else {
+                task.status = TaskStatus::Completed;
+            }
             self.update_task_list();
         }
     }
@@ -644,6 +652,7 @@ impl App<'_> {
                         "[Space] Toggle Completed",
                     ]);
                 }
+                footer_text.push("[c] Show only completed");
                 footer_text.push("[n] New Task");
                 footer_text.push("[t] Compatibility Mode");
                 if self.right_area != RightArea::Preview && self.state.selected().is_some() {
