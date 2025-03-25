@@ -19,7 +19,7 @@ impl Widget for &mut OverDue {
         let area = crate::helpers::create_popup_area(area, &PopupSize::Percentage { x: 50, y: 50 });
         Clear.render(area, buf);
 
-        let block = crate::helpers::rounded_block(" Overdues ", PRIMARY_STYLE);
+        let block = crate::helpers::rounded_block(" Overdues ".into(), PRIMARY_STYLE);
         let mut rows: Vec<Row> = Vec::new();
 
         for task in &self.tasks {
