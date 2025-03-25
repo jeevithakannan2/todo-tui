@@ -32,7 +32,7 @@ impl Confirm {
     }
 
     fn render_prompt(&self, area: Rect, buf: &mut Buffer) {
-        let block = crate::helpers::rounded_block(self.title.as_str(), PRIMARY_STYLE)
+        let block = crate::helpers::rounded_block(self.title.as_str().into(), PRIMARY_STYLE)
             // Should separate into two title_bottom for a separation line in between text
             .title_bottom(vec![
                 Span::styled(" [ ", Style::reset()),

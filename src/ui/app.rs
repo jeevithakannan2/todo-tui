@@ -1,8 +1,8 @@
-use chrono::{NaiveDate, NaiveDateTime, NaiveTime};
+use chrono::{NaiveDate, NaiveTime};
 use ratatui::{
     crossterm::event::{KeyCode, KeyEvent, KeyModifiers},
     prelude::*,
-    widgets::{Cell, Paragraph, Row, Table, TableState, Wrap},
+    widgets::{Cell, Clear, List, ListState, Paragraph, Row, Table, TableState, Wrap},
 };
 use std::collections::BTreeMap;
 use tui_textarea::TextArea;
@@ -10,7 +10,7 @@ use tui_textarea::TextArea;
 use crate::{
     config::Config,
     helpers::{PopupSize, rounded_block},
-    tasks::Task,
+    tasks::{Task, TaskStatus},
     theme::Theme,
 };
 
@@ -30,6 +30,7 @@ pub struct App<'a> {
     search: TextArea<'a>,
     config: Config,
     over_due: OverDue,
+    filter: Filter,
 }
 
 struct Tasks {
@@ -54,6 +55,12 @@ enum AppFocus {
     FirstTimeSetup,
     ToggleEnc,
     OverDue,
+    Filter,
+}
+
+struct Filter {
+    state: ListState,
+    mode: Option<TaskStatus>,
 }
 
 enum ScrollDirection {
@@ -69,12 +76,16 @@ pub const SELECTION_STYLE: Style = Style::new().fg(Color::Rgb(249, 226, 175));
 
 impl App<'_> {
     pub fn new(new: bool, config: Config) -> Self {
-        let tasks = if config.encryption {
+        let mut tasks = if config.encryption {
             crate::tasks::load_encrypted().unwrap_or_else(|_| Vec::new())
         } else {
             crate::tasks::load().unwrap_or_else(|_| Vec::new())
         };
-        let group = Self::group_date_tasks(&tasks);
+
+        crate::tasks::update_overdue(&mut tasks);
+
+        let display_list = Self::get_display_tasks(&tasks, &None);
+        let group = Self::group_date_tasks(&display_list);
 
         let mut text_area = TextArea::default();
         text_area.set_placeholder_text(
@@ -111,11 +122,27 @@ impl App<'_> {
             new_task_save: None,
             right_area: RightArea::NewTask,
             search: text_area,
+            filter: Filter {
+                state: ListState::default().with_selected(Some(0)),
+                mode: None,
+            },
             config,
         }
     }
 
+    fn get_display_tasks(tasks: &[Task], display_status: &Option<TaskStatus>) -> Vec<Task> {
+        match display_status {
+            Some(status) => tasks
+                .iter()
+                .filter(|t| t.status == *status)
+                .cloned()
+                .collect(),
+            None => tasks.to_vec(),
+        }
+    }
+
     pub fn draw(&mut self, frame: &mut Frame, area: Rect) {
+        frame.render_widget(Clear, area);
         // The right area determination should always be first so that the footer text get correctly
         if self.state.selected().is_none() {
             self.right_area = RightArea::NewTask
@@ -147,12 +174,18 @@ impl App<'_> {
         };
         self.search.set_cursor_style(cursor_style);
         self.search
-            .set_block(rounded_block(" Search ", border_style));
+            .set_block(rounded_block(" Search ".into(), border_style));
         frame.render_widget(&self.search, search_area);
 
         // Render Task list
         let style = self.get_border_style(AppFocus::LeftArea);
-        let block = crate::helpers::rounded_block(" Tasks ", style);
+        let title = match self.filter.mode {
+            Some(TaskStatus::Completed) => " Tasks - Completed ",
+            Some(TaskStatus::OverDue) => " Tasks - Overdue ",
+            Some(TaskStatus::Pending) => " Tasks - Pending ",
+            None => " Tasks ",
+        };
+        let block = crate::helpers::rounded_block(title.into(), style);
 
         let mut rows: Vec<Row> = Vec::with_capacity(self.total);
         let now = chrono::Local::now().naive_local();
@@ -174,12 +207,10 @@ impl App<'_> {
             // Add tasks under the date
             for (i, task) in tasks.iter().enumerate() {
                 let title = task.title.as_str();
-                let time = NaiveTime::parse_from_str(&task.time, "%H %M").unwrap_or(now.time());
-                let date_time = NaiveDateTime::new(*date, time);
 
-                let (icon, style) = if task.completed {
+                let (icon, style) = if task.status == TaskStatus::Completed {
                     (self.theme.get_completed(), Style::default().dark_gray())
-                } else if date_time < now {
+                } else if task.is_overdue() {
                     (self.theme.get_uncompleted(), Style::default().red().bold())
                 } else {
                     (self.theme.get_uncompleted(), Style::default().bold())
@@ -213,7 +244,7 @@ impl App<'_> {
             RightArea::EditTask => " Edit Task ",
         };
 
-        let block = crate::helpers::rounded_block(title, style);
+        let block = crate::helpers::rounded_block(title.into(), style);
         frame.render_widget(&block, right_area);
 
         // Render Preview or NewTask
@@ -274,7 +305,29 @@ impl App<'_> {
                     "This is a one time setup. \n Would you like to enable encryption?".into(),
                     PopupSize::Percentage { x: 20, y: 20 },
                 );
-                frame.render_widget(widget, area);
+                frame.render_widget(widget, main_area);
+            }
+            AppFocus::Filter => {
+                let popup_area = crate::helpers::create_popup_area(
+                    main_area,
+                    &PopupSize::Fixed {
+                        width: 17,
+                        height: 6,
+                    },
+                );
+                let block =
+                    crate::helpers::rounded_block(Line::from(" Filter ").centered(), PRIMARY_STYLE);
+                let list = vec![
+                    Line::from("All").centered(),
+                    Line::from("Completed").centered(),
+                    Line::from("Pending").centered(),
+                    Line::from("Overdue").centered(),
+                ];
+                let list = List::new(list)
+                    .block(block)
+                    .highlight_style(SELECTION_STYLE);
+                frame.render_widget(Clear, popup_area);
+                frame.render_stateful_widget(list, popup_area, &mut self.filter.state);
             }
             _ => {}
         }
@@ -395,6 +448,7 @@ impl App<'_> {
                     }
                 }
                 KeyCode::Char('p') => self.right_area = RightArea::Preview,
+                KeyCode::Char('f') => self.focus = AppFocus::Filter,
                 KeyCode::Char('n') => {
                     self.restore_new_task_state();
                     self.new_task.quit = false;
@@ -479,6 +533,26 @@ impl App<'_> {
                     self.focus = AppFocus::LeftArea
                 }
                 KeyCode::Char('n') => self.focus = AppFocus::LeftArea,
+                _ => {}
+            },
+            AppFocus::Filter => match key.code {
+                KeyCode::Enter => {
+                    self.filter.state.selected().map(|i| {
+                        self.filter.mode = match i {
+                            0 => None,
+                            1 => Some(TaskStatus::Completed),
+                            2 => Some(TaskStatus::Pending),
+                            3 => Some(TaskStatus::OverDue),
+                            _ => None,
+                        };
+                    });
+                    self.update_task_list();
+                    self.state.select(None);
+                    self.focus = AppFocus::LeftArea;
+                }
+                KeyCode::Esc | KeyCode::Char('q') => self.focus = AppFocus::LeftArea,
+                KeyCode::Down => self.filter.state.select_next(),
+                KeyCode::Up => self.filter.state.select_previous(),
                 _ => {}
             },
         }
@@ -595,7 +669,8 @@ impl App<'_> {
     }
 
     fn update_task_list(&mut self) {
-        let grouped_tasks = Self::group_date_tasks(&self.tasks.list);
+        let display_list = Self::get_display_tasks(&self.tasks.list, &self.filter.mode);
+        let grouped_tasks = Self::group_date_tasks(&display_list);
         self.tasks.selectable = grouped_tasks.0;
         self.tasks.grouped = grouped_tasks.1;
         self.total = grouped_tasks.2;
@@ -608,7 +683,15 @@ impl App<'_> {
 
     fn toggle_completed(&mut self) {
         if let Some(task) = self.get_selected_mut() {
-            task.completed = !task.completed;
+            if task.status == TaskStatus::Completed {
+                if task.is_overdue() {
+                    task.status = TaskStatus::OverDue;
+                } else {
+                    task.status = TaskStatus::Pending;
+                }
+            } else {
+                task.status = TaskStatus::Completed;
+            }
             self.update_task_list();
         }
     }
@@ -644,6 +727,8 @@ impl App<'_> {
                         "[Space] Toggle Completed",
                     ]);
                 }
+                footer_text.push("[f] Filter");
+                footer_text.push("[c] Show completed");
                 footer_text.push("[n] New Task");
                 footer_text.push("[t] Compatibility Mode");
                 if self.right_area != RightArea::Preview && self.state.selected().is_some() {
@@ -676,6 +761,9 @@ impl App<'_> {
             }
             AppFocus::OverDue => {
                 footer_text.extend_from_slice(&[arrows, "[q] Quit"]);
+            }
+            AppFocus::Filter => {
+                footer_text.extend_from_slice(&[arrows, "[Enter] Apply", "[Esc][q] Cancel"]);
             }
         }
         footer_text.join(" | ")

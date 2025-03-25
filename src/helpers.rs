@@ -7,6 +7,7 @@ use ratatui::{
 
 pub enum PopupSize {
     Percentage { x: u16, y: u16 },
+    Fixed { width: u16, height: u16 },
 }
 
 impl PopupSize {
@@ -14,6 +15,9 @@ impl PopupSize {
         match *self {
             PopupSize::Percentage { x, y } => {
                 ([Constraint::Percentage(x)], [Constraint::Percentage(y)])
+            }
+            PopupSize::Fixed { width, height } => {
+                ([Constraint::Length(width)], [Constraint::Length(height)])
             }
         }
     }
@@ -31,7 +35,7 @@ pub fn create_popup_area(area: Rect, size: &PopupSize) -> Rect {
     area
 }
 
-pub fn rounded_block(title: &str, border_style: Style) -> Block {
+pub fn rounded_block(title: Line, border_style: Style) -> Block {
     Block::bordered()
         .title(title.reset().bold())
         .border_type(BorderType::Rounded)
