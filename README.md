@@ -1,5 +1,7 @@
 # Todo TUI
 
+This is a hobby college project. Not for commercial or professional use.
+
 <!-- ![Preview](/.github/preview.gif) -->
 
 > [!NOTE]
